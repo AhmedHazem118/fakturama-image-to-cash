@@ -204,3 +204,74 @@ def save_debtor(win):
     _save_current(win)
     ui.wait_until(lambda: not any(t.window_text() == "*New Debtor" for t in win.descendants(control_type="TabItem")),
                   8, what="debtor to be saved")
+
+
+# ------------------------------------------------------------ select debtor
+ADDRESS_COLUMNS = ["No.", "First Name", "Name", "Company", "ZIP", "City"]
+
+
+def _address_dialog(win):
+    return next((d for d in win.descendants(control_type="Window")
+                 if "Select the address" in (d.window_text() or "")), None)
+
+
+def _company_matches(shown, wanted):
+    """The Company column is cut off with '...' when it is too wide, so a shortened text counts as a
+    match only if it is a prefix of the wanted name. The full name is verified later in the order."""
+    shown, wanted = shown.strip(), wanted.strip()
+    if shown.endswith("..."):
+        return wanted.startswith(shown[:-3].rstrip())
+    return shown == wanted
+
+
+def find_debtor_rows(rows, debtor):
+    """Indexes of table rows that match the debtor on First Name, Name, ZIP, City and Company."""
+    return [i for i, r in enumerate(rows)
+            if r["First Name"].strip() == debtor["first_name"] and r["Name"].strip() == debtor["last_name"]
+            and r["ZIP"].strip() == debtor["zip"] and r["City"].strip() == debtor["city"]
+            and _company_matches(r["Company"], debtor["company"])]
+
+
+def select_debtor(win, debtor):
+    """Open 'Select the address' (upper icon next to Addresses), search, read the rows with the vision
+    fallback, and pick the single exact match. Returns True if selected, False if the debtor does not
+    exist (caller then creates it). Several matches = stop for a human."""
+    from . import vision
+    upper, _lower = ui.icons_after_label(win, "Addresses", 2)
+    ui.click(upper)
+    dlg = ui.wait_until(lambda: _address_dialog(win), 8, what="'Select the address' dialog")
+
+    def cancel():
+        ui.click(ui.find_by_name(dlg, "Cancel", "Button"))
+
+    search = next(e for e in dlg.descendants(control_type="Edit") if e.rectangle().width() == 150)
+    ui.set_text(search, debtor["company"])
+    body = next(p for p in dlg.descendants(control_type="Pane")
+                if p.rectangle().width() == 774 and p.rectangle().height() > 300)
+    # The list loads/filters asynchronously: wait until the table's pixels stop changing.
+    ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="result list")
+    rows = vision.read_table(body.rectangle(), ADDRESS_COLUMNS)
+    hits = find_debtor_rows(rows, debtor)
+    log.info("address dialog: %d row(s), %d exact match(es)", len(rows), len(hits))
+    if not hits:
+        cancel()
+        return False
+    if len(hits) > 1:
+        cancel()
+        ui.fail(f"{len(hits)} contacts match {debtor['company']!r}; refusing to guess (manual review)")
+    r = body.rectangle()
+    row_h = 25  # measured on the screen: header ~25px, rows ~25px
+    body.click_input(coords=(60, row_h + hits[0] * row_h + row_h // 2))
+    ui.click(ui.find_by_name(dlg, "OK", "Button"))
+    ui.wait_until(lambda: _address_dialog(win) is None, 6, what="'Select the address' dialog to close")
+    # Verify the RESULT, not the click: the order's address box must now show the contact.
+    # (A closed dialog does not prove a row was selected: see E21.)
+    box = ui.edits_after_label(win, "Addresses", 1)[0]
+    shown = ui.read_value(box)
+    if debtor["zip"] not in shown or debtor["city"] not in shown:
+        ui.fail(f"After selecting, the order's address box shows {shown!r}, not the debtor. "
+                "Row selection in the dialog did not take effect; stopping for manual review.")
+    if debtor["company"] not in shown:
+        ui.fail(f"Address box {shown!r} does not contain the full company name {debtor['company']!r}")
+    return True
+

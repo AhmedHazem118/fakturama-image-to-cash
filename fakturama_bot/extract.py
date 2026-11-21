@@ -50,19 +50,18 @@ class ExtractionError(Exception):
     pass
 
 
-def extract_order(image_path, retries=2):
+def ask_gemini(image_bytes, mime, prompt, schema, retries=2):
+    """One vision call: image + prompt in, JSON (following `schema`) out. Shared by the order
+    extractor and by the screen-table reader (vision.py)."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise ExtractionError("GEMINI_API_KEY is not set. See README, setup step 3.")
 
-    mime = mimetypes.guess_type(image_path)[0] or "image/png"
-    with open(image_path, "rb") as fh:
-        data = base64.b64encode(fh.read()).decode()
-
+    data = base64.b64encode(image_bytes).decode()
     body = {
-        "contents": [{"parts": [{"text": PROMPT}, {"inline_data": {"mime_type": mime, "data": data}}]}],
+        "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": mime, "data": data}}]}],
         "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
-                             "responseSchema": SCHEMA},
+                             "responseSchema": schema},
     }
     req = urllib.request.Request(
         URL, data=json.dumps(body).encode(),
@@ -82,3 +81,9 @@ def extract_order(image_path, retries=2):
             raise ExtractionError(f"Gemini returned HTTP {e.code}: {e.read()[:300]!r}")
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             raise ExtractionError(f"Unexpected model reply: {e}")
+
+
+def extract_order(image_path, retries=2):
+    mime = mimetypes.guess_type(image_path)[0] or "image/png"
+    with open(image_path, "rb") as fh:
+        return ask_gemini(fh.read(), mime, PROMPT, SCHEMA, retries)
