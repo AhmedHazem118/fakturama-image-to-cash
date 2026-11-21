@@ -17,3 +17,6 @@ Design_Doc_Fakturama.md
 .env
 *.key
 /Design_Doc_Fakturama.docx
+
+# Private working notes
+DECISIONS.md
