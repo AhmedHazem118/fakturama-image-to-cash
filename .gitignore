@@ -3,20 +3,12 @@ __pycache__/
 *.pyc
 .venv/
 
-# Run evidence (full-screen screenshots can show private windows; curated, cropped ones go in docs/screenshots/)
+# Run output: full-screen screenshots; cropped ones go in docs/screenshots/
 run_output/
-
-# Private study material, not part of the submission
-INTERVIEW_TIPS.md
-PART1_QA.md
-Fakturama_Project_Guide.docx
-Design_Doc_Fakturama.md
-~$*
 
 # Secrets: the Gemini key lives only in the GEMINI_API_KEY environment variable
 .env
 *.key
-/Design_Doc_Fakturama.docx
 
-# Private working notes
-DECISIONS.md
+# Office lock files
+~$*
