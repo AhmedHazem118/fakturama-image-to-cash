@@ -18,11 +18,32 @@ The Part 1 design document is in [docs/Design_Doc_Fakturama.docx](docs/Design_Do
 | Select the Debtor in the Order (reads the dialog table, exact match, native row selection) | Done, Order's address box verified |
 | Create VAT rates (VAT 19%, VAT 7%) | Done, checked in the VATs list |
 | Create products (SKU, gross = net x (1 + VAT/100), cost 0, stock 0) | Done, checked in the Products list |
-| Check before create (VAT, products, payment methods, debtor) | **Not done**: re-running creates duplicates |
+| Check before create: VAT entries and payment methods (reads the real dropdowns; reuses by name) | Done; the percentage of an existing entry is not compared |
+| Check before create: products | **Not done**: re-running creates duplicate products |
 | Add products to the Order and fill the Items table (qty, price, VAT, discount) | **Not started** |
 | Save the Order and verify it in Data > Documents | **Not started** |
 | Create the linked Invoice from the Order, set payment status, verify | **Not started** |
 | One-command runner and run report | **Not started** (each step has its own script in `tools/`) |
+
+## Screenshots (real runs, Fakturama window only, fake data)
+
+**1. Order with header, selected debtor and the products created.** Date, Cust.Ref. and price mode Net were set by the bot and read back. The Address box was filled by selecting the debtor in the "Select the address" dialog and verified afterwards. The bottom panel lists the three products the bot created, with gross prices 59.50, 23.80 and 32.10.
+
+![Order header, debtor and products](docs/screenshots/01_order_header_and_debtor.png)
+
+**2. Debtors list.** The debtor created by the bot: customer CUST000001, Anna Keller, Blue Harbor Trading GmbH, ZIP 20457, Hamburg. The record was reopened and every field compared.
+
+![Debtors list](docs/screenshots/02_debtors_list.png)
+
+**3. VAT entries.** "VAT 19%" and "VAT 7%" were created next to the built-in "Tax-free"; the list shows the stored values 19.00 % and 7.00 %.
+
+![VAT entries](docs/screenshots/03_vats_list.png)
+
+**4. Products.** KB-100, MS-220 and MN-330 with the gross price computed as net x (1 + VAT/100) and the matching VAT.
+
+![Products](docs/screenshots/04_products_list.png)
+
+Re-create them with `python -m tools.take_readme_screenshots` (it crops to the Fakturama window only).
 
 ## Requirements
 
@@ -79,13 +100,14 @@ Findings that shaped the code:
 ## Limitations and skipped items
 
 - Items table, Order save, Invoice, payment status: not built (see Status).
-- Not idempotent yet: VAT rates, products and the payment method are created without first checking whether they exist. Run against a clean data folder.
+- Not fully idempotent: products are created without first checking whether they exist, and an existing VAT entry or payment method is reused by name only (its percentage or settings are not compared). Run against a clean data folder.
 - Tested on one fake order. Other layouts, photos, rotated or multi-page images, other languages and number formats are untested.
 - English user interface and one screen layout assumed.
 - The vision read of tables sends a screenshot crop to the model, costs an API call and can time out (one 90 s timeout seen). With real customer data this needs a private or paid model.
 - Company names in the address dialog are cut off by the column width, so they are matched by prefix and verified in full in the Order afterwards.
 - The reduced 7% VAT uses the default e-invoice code "S (Standard rate)", following the task's example.
-- Annotated screenshots and a recording are not included yet.
+- A screen recording is not included. The screenshots below were taken from the real application after the steps ran.
+- The vision calls to Gemini can be slow: during the last check even a one-word request timed out for over 30 seconds while the model list answered in 2 seconds, so the table reads and the image extraction depend on the service being responsive.
 
 ## If you had 3 more hours, what would you do?
 

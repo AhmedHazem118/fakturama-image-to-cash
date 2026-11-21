@@ -358,3 +358,54 @@ def create_product(win, item, vat_description):
     ui.click(ui.find_by_name(win, "New product", "MenuItem"))
     ui.wait_until(win.child_window(title="New product", control_type="Pane").exists, 10, what="New product editor")
     _fill_product_editor(win, item, vat_description)
+
+
+# ------------------------------------------------- check before create
+def _dropdown_items(combo):
+    """Entries of a real dropdown (readable by UIA, unlike the list tables)."""
+    combo.expand()
+    try:
+        return [d.window_text() for d in combo.descendants(control_type="ListItem")]
+    finally:
+        combo.collapse()
+
+
+def existing_vat_names(win):
+    """Names of the VAT entries that exist, read from the VAT dropdown of a throwaway New product form
+    (the form is closed again without saving). Name-based only: the percentage of an existing entry is
+    NOT compared here (see D32)."""
+    from pywinauto.keyboard import send_keys
+    send_keys("{ESC}")
+    ui.click(ui.find_by_name(win, "New", "MenuItem"))
+    ui.click(ui.find_by_name(win, "New product", "MenuItem"))
+    ui.wait_until(win.child_window(title="New product", control_type="Pane").exists, 10, what="New product editor")
+    editor = win.child_window(title="New product", control_type="Pane").wrapper_object()
+    names = _dropdown_items(ui.find_by_name(editor, "VAT", "ComboBox"))
+    close_tab(win, "New product")
+    return names
+
+
+def existing_payment_names(win):
+    """Payment methods that exist, read from the Payment dropdown of a throwaway New Debtor form."""
+    editor = open_new_debtor(win)
+    _open_tab(editor, "Miscellaneous")
+    names = _dropdown_items(ui.find_by_name(editor, "Payment", "ComboBox"))
+    close_tab(win, "New Debtor")
+    return names
+
+
+def ensure_vat(win, name, percent):
+    """Reuse the VAT entry if its name exists, else create it. Returns 'reused' or 'created'."""
+    if name in existing_vat_names(win):
+        log.info("VAT %r already exists: reused", name)
+        return "reused"
+    create_vat(win, name, percent)
+    return "created"
+
+
+def ensure_payment_term(win, name):
+    if name in existing_payment_names(win):
+        log.info("Payment method %r already exists: reused", name)
+        return "reused"
+    create_payment_term(win, name)
+    return "created"
