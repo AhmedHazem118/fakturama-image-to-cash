@@ -192,3 +192,10 @@ def same_money(shown, value):
         return Decimal(cleaned) == Decimal(str(value))
     except InvalidOperation:
         return False
+
+
+def money_value(shown):
+    """'$1,234.50' -> Decimal('1234.50')."""
+    from decimal import Decimal
+    cleaned = "".join(ch for ch in str(shown) if ch.isdigit() or ch in ".-")
+    return Decimal(cleaned or "0")

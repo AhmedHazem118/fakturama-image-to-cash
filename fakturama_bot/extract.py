@@ -50,7 +50,7 @@ class ExtractionError(Exception):
     pass
 
 
-def ask_gemini(image_bytes, mime, prompt, schema, retries=2):
+def ask_gemini(image_bytes, mime, prompt, schema, retries=2, timeout=90):
     """One vision call: image + prompt in, JSON (following `schema`) out. Shared by the order
     extractor and by the screen-table reader (vision.py)."""
     key = os.environ.get("GEMINI_API_KEY")
@@ -70,7 +70,7 @@ def ask_gemini(image_bytes, mime, prompt, schema, retries=2):
 
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 payload = json.load(resp)
             text = payload["candidates"][0]["content"]["parts"][0]["text"]
             return json.loads(text)

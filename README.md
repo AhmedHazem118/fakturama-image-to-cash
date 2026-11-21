@@ -20,7 +20,8 @@ The Part 1 design document is in [docs/Design_Doc_Fakturama.docx](docs/Design_Do
 | Create products (SKU, gross = net x (1 + VAT/100), cost 0, stock 0) | Done, checked in the Products list |
 | Check before create: VAT entries and payment methods (reads the real dropdowns; reuses by name) | Done; the percentage of an existing entry is not compared |
 | Check before create: products | **Not done**: re-running creates duplicate products |
-| Add products to the Order and fill the Items table (qty, price, VAT, discount) | **Not started** |
+| Add the products to the Order (type the SKU; verified by Total Net and the Items grid, offline OCR fallback) | Done: Total Net $100.00 and VAT $15.40 as expected |
+| Set quantity and discount per line in the Items table | **Not started** (price and VAT already come with the product) |
 | Save the Order and verify it in Data > Documents | **Not started** |
 | Create the linked Invoice from the Order, set payment status, verify | **Not started** |
 | One-command runner and run report | **Not started** (each step has its own script in `tools/`) |
@@ -43,7 +44,11 @@ The Part 1 design document is in [docs/Design_Doc_Fakturama.docx](docs/Design_Do
 
 ![Products](docs/screenshots/04_products_list.png)
 
-Re-create them with `python -m tools.take_readme_screenshots` (it crops to the Fakturama window only).
+**5. The Order with its three items.** Added by the bot through the product dialog (typing the SKU) and verified: each line shows the product's net unit price and VAT, Total Net is $100.00 and VAT is $15.40 (9.50 + 3.80 + 2.10). Quantity and discount are still the defaults (1.00 and 0 %); setting them is the next step.
+
+![Order with items](docs/screenshots/05_order_with_items.png)
+
+Re-create them with `python -m tools.take_readme_screenshots` and `python -m tools.take_items_screenshot` (it crops to the Fakturama window only).
 
 ## Requirements
 
@@ -69,6 +74,7 @@ From the project folder:
 python -m unittest discover -s tests -t . -v     # validator tests, no Fakturama and no key needed
 python -m tools.try_extract                      # reads samples/order_sample.png with Gemini and compares to the answer key
 python -m tools.try_header                       # opens a New Order and fills the header, reading each value back
+python -m tools.try_select_product MS-220        # adds a product to the open, maximized order and verifies it
 ```
 
 The other scripts in `tools/` (`try_payment`, `try_debtor`, `try_vat`, `try_product`, `try_select_debtor`) are the step-by-step scripts used during development. They expect Fakturama to be in a specific state (for example an editor already open) and are described in their docstrings. A single entry point that runs the whole flow does not exist yet.
@@ -99,11 +105,11 @@ Findings that shaped the code:
 
 ## Limitations and skipped items
 
-- Items table, Order save, Invoice, payment status: not built (see Status).
+- Quantity and discount per line, Order save, Invoice, payment status: not built (see Status).
 - Not fully idempotent: products are created without first checking whether they exist, and an existing VAT entry or payment method is reused by name only (its percentage or settings are not compared). Run against a clean data folder.
 - Tested on one fake order. Other layouts, photos, rotated or multi-page images, other languages and number formats are untested.
 - English user interface and one screen layout assumed.
-- The vision read of tables sends a screenshot crop to the model, costs an API call and can time out (one 90 s timeout seen). With real customer data this needs a private or paid model.
+- The vision read of tables sends a screenshot crop to the model, costs an API call and can time out. Verification of an added product falls back to an offline Windows OCR (weaker: it checks that the SKU is present, not which row). With real customer data this needs a private or paid model.
 - Company names in the address dialog are cut off by the column width, so they are matched by prefix and verified in full in the Order afterwards.
 - The reduced 7% VAT uses the default e-invoice code "S (Standard rate)", following the task's example.
 - A screen recording is not included. The screenshots below were taken from the real application after the steps ran.

@@ -243,9 +243,9 @@ def _double_click_row(win, dlg, row_index, row_h):
     computed from the table's own rectangle, never from the screen."""
     from pywinauto import Application
     app = Application(backend="win32").connect(process=win.element_info.process_id)
-    native = next(w for w in app.windows() if "Select the address" in w.window_text())
+    native = next(w for w in app.windows() if dlg.window_text() and dlg.window_text() in w.window_text())
     table = next((c for c in native.descendants()
-                  if c.class_name() == "SWT_Window0" and c.rectangle().width() == 774
+                  if c.class_name() == "SWT_Window0" and c.rectangle().width() > 600
                   and 380 < c.rectangle().height() < 420), None)
     if table is None:
         ui.fail("Could not find the address table's native window")
@@ -409,3 +409,117 @@ def ensure_payment_term(win, name):
         return "reused"
     create_payment_term(win, name)
     return "created"
+
+
+# ------------------------------------------------------- select a product
+PRODUCT_COLUMNS = ["Item No.", "Name", "Description", "Stock", "Price", "VAT"]
+
+
+def _window_named(win, title):
+    return next((d for d in win.descendants(control_type="Window") if d.window_text() == title), None)
+
+
+def _total_net(win):
+    """Order's Total Net as text (a real, readable box; the Items table itself is not)."""
+    return ui.read_value(ui.field_by_label(win, "Total Net", ("Edit",)))
+
+
+ITEM_COLUMNS = ["Pos.", "Qty.", "Item No.", "Picture", "Name", "Description", "VAT", "U.Price", "Discount", "Price"]
+
+
+def _items_grid_rect(win):
+    """Screen rectangle of the Items grid (a custom-drawn canvas, found relative to the 'Items' label)."""
+    label = next(t for t in win.descendants(control_type="Text") if (t.window_text() or "").strip() == "Items")
+    lr = label.rectangle()
+    panes = [p for p in win.descendants(control_type="Pane")
+             if p.rectangle().width() > 800 and lr.top - 10 < p.rectangle().top < lr.top + 140 and 100 < p.rectangle().height() < 300]
+    if not panes:
+        ui.fail("Items grid not found below the 'Items' label")
+    return max(panes, key=lambda p: p.rectangle().width() * p.rectangle().height()).rectangle()
+
+
+def read_items(win, timeout=90):
+    """The order lines as shown on screen (vision read of the Items grid): list of {column: text}."""
+    from . import vision
+    return vision.read_table(_items_grid_rect(win), ITEM_COLUMNS, timeout=timeout)
+
+
+def _native_items_grid(win):
+    from pywinauto import Application
+    rect = _items_grid_rect(win)
+    app = Application(backend="win32").connect(process=win.element_info.process_id)
+    main = next(w for w in app.windows() if w.window_text().startswith("Fakturama - "))
+    return next(c for c in main.descendants() if c.class_name() == "SWT_Window0"
+                and abs(c.rectangle().width() - rect.width()) < 20 and abs(c.rectangle().height() - rect.height()) < 20)
+
+
+def delete_last_line(win):
+    """Select the first row and press the red x (used to undo a wrong add)."""
+    grid = _native_items_grid(win)
+    grid.click(coords=(200, 37))
+    import time
+    time.sleep(0.5)
+    ui.click(ui.icons_after_label(win, "Items", 4)[2])
+
+
+def select_product(win, sku, expected_net, already=0):
+    """Add a product to the Order and VERIFY it.
+    Opens the 'Select a product' dialog (upper icon next to Items) and types the SKU. Fakturama closes the dialog
+    by itself when exactly one product matches (it adds that product). If the dialog stays open, several products
+    match: read the rows (vision), require exactly one exact Item No., select it with a native double-click.
+    Verification (UIA-readable): Total Net grew by `expected_net`; (vision): the last line's Item No. equals `sku`.
+    `already` = how many lines with this SKU were added earlier in this run.
+    If the vision service is unavailable, the line check falls back to an offline OCR count (second reader).
+    Returns True when the verified line was added, False if the SKU does not exist."""
+    import time
+    from decimal import Decimal
+    from . import vision
+    net_before = ui.money_value(_total_net(win))
+    ui.click(ui.icons_after_label(win, "Items", 4)[0])
+    dlg = ui.wait_until(lambda: _window_named(win, "Select a product"), 8, what="'Select a product' dialog")
+    search = next(e for e in dlg.descendants(control_type="Edit") if e.rectangle().width() == 150)
+    search.click_input()
+    search.type_keys("".join("{" + c + "}" if c in "+^%~(){}" else c for c in sku), set_foreground=False)
+    time.sleep(1.5)
+    dlg = _window_named(win, "Select a product")
+    if dlg is not None:                                   # not auto-added: several matches or none
+        body = next(p for p in dlg.descendants(control_type="Pane")
+                    if p.rectangle().width() > 600 and 380 < p.rectangle().height() < 420)
+        ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="product list")
+        rows = vision.read_table(body.rectangle(), PRODUCT_COLUMNS)
+        hits = [i for i, r in enumerate(rows) if r["Item No."].strip() == sku]
+        log.info("product dialog stayed open: %d row(s), %d exact match(es) for %s", len(rows), len(hits), sku)
+        if len(hits) != 1:
+            ui.click(ui.find_by_name(dlg, "Cancel", "Button"))
+            if not hits:
+                return False
+            ui.fail(f"{len(hits)} products have Item No. {sku!r}; refusing to guess (manual review)")
+        _double_click_row(win, dlg, hits[0], 25)
+        ui.wait_until(lambda: _window_named(win, "Select a product") is None, 6, what="'Select a product' dialog to close")
+    time.sleep(1.0)
+    net_after = ui.money_value(_total_net(win))
+    if net_after - net_before != Decimal(str(expected_net)):
+        ui.fail(f"Total Net went {net_before} -> {net_after}, expected +{expected_net}: wrong or no product added")
+    verified_by = _verify_line(win, sku, already)
+    log.info("product %s added and verified (%s)", sku, verified_by)
+    return True
+
+
+def _verify_line(win, sku, already):
+    """Prove the last line is `sku`. Primary reader: vision model (reads the last row). If the service fails
+    (timeout, HTTP error), fall back to the offline OCR: the SKU must appear `already + 1` times."""
+    from . import vision
+    from .extract import ExtractionError
+    try:
+        lines = read_items(win, timeout=30)
+    except (ExtractionError, OSError) as exc:
+        log.warning("vision unavailable (%s); using offline OCR as the second reader", exc)
+        if vision.count_in_ocr(_items_grid_rect(win), sku) >= already + 1:
+            return "offline OCR"
+        delete_last_line(win)
+        ui.fail(f"Could not confirm {sku!r} in the Items grid with either reader; the line was removed again")
+    if not lines or lines[-1]["Item No."].strip() != sku:
+        got = lines[-1]["Item No."] if lines else None
+        delete_last_line(win)
+        ui.fail(f"The added line shows Item No. {got!r}, not {sku!r}; the line was removed again (manual review)")
+    return "vision"
