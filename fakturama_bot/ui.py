@@ -155,8 +155,9 @@ def read_value(ctrl):
     return (ctrl.window_text() or "").strip()
 
 
-def set_text(ctrl, value):
-    """Type `value` into a field, then READ IT BACK to confirm it stuck."""
+def set_text(ctrl, value, same=None):
+    """Type `value` into a field, then READ IT BACK to confirm it stuck.
+    `same(shown, value)` can replace the exact comparison (money fields reformat what you type)."""
     ctrl.click_input()
     # Safety guard: if the field is off-screen or covered, the click lands elsewhere and we would
     # overwrite another field (this happened with ZIP/Street, see E15). No focus -> do not type.
@@ -171,7 +172,7 @@ def set_text(ctrl, value):
     ctrl.type_keys(literal, with_spaces=True, set_foreground=False)
     # The field's value can lag behind the keystrokes, so wait for it to match.
     try:
-        wait_until(lambda: read_value(ctrl) == str(value), 4, 0.2, what=f"field to show {value!r}")
+        wait_until(lambda: (same or (lambda a, b: a == str(b)))(read_value(ctrl), value), 4, 0.2, what=f"field to show {value!r}")
     except UIError:
         fail(f"Typed {value!r} but the field shows {read_value(ctrl)!r}")
     actual = read_value(ctrl)
@@ -181,3 +182,13 @@ def set_text(ctrl, value):
 
 def click(ctrl):
     ctrl.click_input()
+
+
+def same_money(shown, value):
+    """True if the field text (e.g. '$59.50', '1,234.50 EUR') equals `value` as a number."""
+    from decimal import Decimal, InvalidOperation
+    cleaned = "".join(ch for ch in str(shown) if ch.isdigit() or ch in ".-")
+    try:
+        return Decimal(cleaned) == Decimal(str(value))
+    except InvalidOperation:
+        return False

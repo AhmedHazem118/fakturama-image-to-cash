@@ -177,7 +177,11 @@ def discard_save_prompt(win):
     ui.wait_until(lambda: find_dialog() is None, 6, what="'Save Parts' dialog to close")
 
 
-def _save_current(win):
+def _save_current(win, editor_tab=None):
+    """Toolbar Save acts on the ACTIVE panel. If a list panel was used last (e.g. the VATs list) it
+    would save nothing, so activate the editor's own tab first when its title is known (E23)."""
+    if editor_tab:
+        ui.find_by_name(win, editor_tab, "TabItem").click_input()
     ui.click(ui.find_by_name(win, "Save the current contents", "Button"))
 
 
@@ -289,3 +293,68 @@ def select_debtor(win, debtor):
         ui.fail(f"Address box {shown!r} does not contain the full company name {debtor['company']!r}")
     return True
 
+
+
+# ------------------------------------------------------------------- VAT
+def _fill_vat_editor(win, name, percent):
+    """Fill the open 'New TAX Rate' editor (Name, Description, Value; VAT code stays the default
+    'S (Standard rate)' as in the task's example), save, and prove it saved by the tab's new title."""
+    editor = win.child_window(title="New TAX Rate", control_type="Pane").wrapper_object()
+    ui.set_text(ui.find_by_name(editor, "Name", "Edit"), name)
+    ui.set_text(ui.find_by_name(editor, "Description", "Edit"), name)
+    code = ui.find_by_name(editor, "VAT code (E-Invoice)", "ComboBox").selected_text()
+    if not code.startswith("S"):
+        ui.fail(f"VAT code is {code!r}, expected the default 'S (Standard rate)'")
+    value = ui.find_by_name(editor, "Value", "Edit")
+    ui.set_text(value, f"{percent}%")
+    _save_current(win, "*New TAX Rate")
+    ui.wait_until(lambda: any(t.window_text() == name for t in win.descendants(control_type="TabItem")),
+                  8, what=f"tab titled {name!r} (VAT saved)")
+    log.info("VAT created: %s (%s%%)", name, percent)
+
+
+def create_vat(win, name, percent):
+    from pywinauto.keyboard import send_keys
+    send_keys("{ESC}")
+    ui.click(ui.find_by_name(win, "New", "MenuItem"))
+    ui.click(ui.find_by_name(win, "New VAT", "MenuItem"))
+    ui.wait_until(win.child_window(title="New TAX Rate", control_type="Pane").exists, 10, what="New TAX Rate editor")
+    _fill_vat_editor(win, name, percent)
+
+
+# --------------------------------------------------------------- product
+def gross_price(net, vat_percent):
+    """Gross = net x (1 + VAT/100), 2 decimals (the task's rule). Uses validate's Decimal helper."""
+    from decimal import Decimal
+    from .validate import gross_price as _gross
+    # str() first: Decimal(0.1) would carry binary-float noise, Decimal("0.1") is exact.
+    return _gross(Decimal(str(net)), Decimal(str(vat_percent)))
+
+
+def _fill_product_editor(win, item, vat_description):
+    """Fill the open 'New product' editor: Item Number (SKU), Name, Description, Price (gross), VAT.
+    Cost price and stock stay at their 0 defaults (task). Saves and proves it by the tab's new title."""
+    editor = win.child_window(title="New product", control_type="Pane").wrapper_object()
+    ui.set_text(ui.find_by_name(editor, "Item Number", "Edit"), item["sku"])
+    ui.set_text(ui.find_by_name(editor, "Name", "Edit"), item["description"])
+    ui.set_text(ui.find_by_name(editor, "Description", "Edit"), item["description"])
+    gross = gross_price(item["unit_net"], item["vat_percent"])
+    ui.set_text(ui.field_by_label(editor, "Price (gross)", ("Edit",)), str(gross), same=ui.same_money)
+    select_in_combo(ui.find_by_name(editor, "VAT", "ComboBox"), vat_description)
+    cost = ui.read_value(ui.field_by_label(editor, "cost price (net)", ("Edit",)))
+    stock = ui.read_value(ui.find_by_name(editor, "Stock", "Edit"))
+    if not (ui.same_money(cost, 0) and ui.same_money(stock, 0)):
+        ui.fail(f"Cost price {cost!r} / stock {stock!r} are not the expected 0 defaults")
+    _save_current(win, "*New product")
+    ui.wait_until(lambda: any(t.window_text() == item["description"] for t in win.descendants(control_type="TabItem")),
+                  8, what=f"tab titled {item['description']!r} (product saved)")
+    log.info("Product created: %s (gross %s, %s)", item["sku"], gross, vat_description)
+
+
+def create_product(win, item, vat_description):
+    from pywinauto.keyboard import send_keys
+    send_keys("{ESC}")
+    ui.click(ui.find_by_name(win, "New", "MenuItem"))
+    ui.click(ui.find_by_name(win, "New product", "MenuItem"))
+    ui.wait_until(win.child_window(title="New product", control_type="Pane").exists, 10, what="New product editor")
+    _fill_product_editor(win, item, vat_description)
