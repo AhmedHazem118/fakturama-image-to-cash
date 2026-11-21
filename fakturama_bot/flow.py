@@ -232,6 +232,22 @@ def find_debtor_rows(rows, debtor):
             and _company_matches(r["Company"], debtor["company"])]
 
 
+def _double_click_row(win, dlg, row_index, row_h):
+    """Double-click a row of the dialog's table by sending mouse MESSAGES straight to its native
+    window (win32 backend). Real mouse clicks (UIA click_input) never selected the row, but window
+    messages do (E21/E22). The table is a custom-drawn canvas, so UIA cannot see rows; position is
+    computed from the table's own rectangle, never from the screen."""
+    from pywinauto import Application
+    app = Application(backend="win32").connect(process=win.element_info.process_id)
+    native = next(w for w in app.windows() if "Select the address" in w.window_text())
+    table = next((c for c in native.descendants()
+                  if c.class_name() == "SWT_Window0" and c.rectangle().width() == 774
+                  and 380 < c.rectangle().height() < 420), None)
+    if table is None:
+        ui.fail("Could not find the address table's native window")
+    table.double_click(coords=(300, row_h + row_index * row_h + row_h // 2))
+
+
 def select_debtor(win, debtor):
     """Open 'Select the address' (upper icon next to Addresses), search, read the rows with the vision
     fallback, and pick the single exact match. Returns True if selected, False if the debtor does not
@@ -259,10 +275,8 @@ def select_debtor(win, debtor):
     if len(hits) > 1:
         cancel()
         ui.fail(f"{len(hits)} contacts match {debtor['company']!r}; refusing to guess (manual review)")
-    r = body.rectangle()
     row_h = 25  # measured on the screen: header ~25px, rows ~25px
-    body.click_input(coords=(60, row_h + hits[0] * row_h + row_h // 2))
-    ui.click(ui.find_by_name(dlg, "OK", "Button"))
+    _double_click_row(win, dlg, hits[0], row_h)
     ui.wait_until(lambda: _address_dialog(win) is None, 6, what="'Select the address' dialog to close")
     # Verify the RESULT, not the click: the order's address box must now show the contact.
     # (A closed dialog does not prove a row was selected: see E21.)

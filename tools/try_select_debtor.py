@@ -1,5 +1,6 @@
-"""Try: select the existing debtor in the open New Order, then dump what the order shows for the address."""
+"""Try: clear the order's address box, run select_debtor, then confirm the box shows the debtor."""
 import json, os, subprocess, time
+from pywinauto.keyboard import send_keys
 from fakturama_bot import flow, ui
 
 if not os.environ.get("GEMINI_API_KEY"):
@@ -9,10 +10,8 @@ if not os.environ.get("GEMINI_API_KEY"):
 order = json.load(open("samples/order_sample.expected.json", encoding="utf-8"))
 win = ui.main_window()
 ui.find_by_name(win, "*New Order", "TabItem").click_input(); time.sleep(1)
+box = ui.edits_after_label(win, "Addresses", 1)[0]
+box.click_input(); send_keys("^a{BACKSPACE}"); time.sleep(0.5)
+print("box cleared, now:", repr(ui.read_value(box)))
 print("selected:", flow.select_debtor(win, order["debtor"]))
-time.sleep(1)
-ui.screenshot("debtor_selected")
-for d in win.descendants():
-    r = d.rectangle()
-    if r.width() > 0 and 250 < r.top < 460 and 505 < r.left < 1100 and d.element_info.control_type in ("Text", "Edit", "ComboBox"):
-        print(f"{d.element_info.control_type:9} | {(d.window_text() or '')[:70]!r:72} | {r.left},{r.top} {r.width()}x{r.height()}")
+print("box:", repr(ui.read_value(ui.edits_after_label(win, "Addresses", 1)[0])))
