@@ -6,6 +6,8 @@ A Python robot that reads an order image with a vision model, validates it, and 
 
 The Part 1 design document is in [docs/Design_Doc_Fakturama.docx](docs/Design_Doc_Fakturama.docx).
 
+**Run it:** see [Requirements](#requirements), [Setup](#setup) and [Run](#run) (one command, about ten minutes, on an empty Fakturama data folder).
+
 ## Screenshots (annotated, cropped to the Fakturama window)
 
 Taken by the runner itself during the clean end-to-end run (`--shots`), then annotated with `tools/annotate_run_shots.py`.
