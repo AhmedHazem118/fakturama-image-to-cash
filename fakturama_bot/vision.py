@@ -29,7 +29,17 @@ def read_table(rect, columns, timeout=90):
               "Copy the text exactly as shown; use an empty string for an empty cell; "
               "a text ending in '...' is cut off by the column width, keep the dots. "
               "If there are no data rows, return an empty list.")
-    rows = ask_gemini(buf.getvalue(), "image/png", prompt, SCHEMA, timeout=timeout)["rows"]
+    rows = None
+    for attempt in range(4):          # the free tier answers 429 (rate limit) in bursts: wait and ask again before giving up
+        try:
+            rows = ask_gemini(buf.getvalue(), "image/png", prompt, SCHEMA, timeout=timeout)["rows"]
+            break
+        except Exception as exc:
+            if attempt == 3:
+                raise
+            log.warning("vision read failed (%s); waiting 25 s before trying again", exc)
+            import time
+            time.sleep(25)
     table = [dict(zip(columns, row)) for row in rows if any(c.strip() for c in row)]
     log.info("vision read %d table row(s)", len(table))
     return table

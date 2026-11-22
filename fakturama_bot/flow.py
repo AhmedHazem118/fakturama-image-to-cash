@@ -837,7 +837,8 @@ def _column_center(win, name):
     from PIL import ImageGrab
     rect = _items_grid_rect(win)
     img = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom)).convert("L")
-    y = ROW0_Y + ROW_H * 6 + 12                               # an empty row (an order has two or three lines)
+    rows_visible = max(3, (img.height - 25 - 18) // ROW_H)    # header 25 px, scroll bar about 18 px; the grid height changes with the layout
+    y = ROW0_Y + ROW_H * (rows_visible - 1)                   # the bottom visible row: empty unless the order has that many lines
     xs = [x for x in range(img.width) if img.getpixel((x, y)) < 225]
     lines = []
     for x in xs:
