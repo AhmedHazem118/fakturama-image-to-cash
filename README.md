@@ -17,8 +17,8 @@ Step numbers refer to the task document.
 | 1.3 to 1.8 Open a New Order, Date, Cust.Ref., price mode Net, VAT mode | Done, verified on screen |
 | 2.1 to 2.4 Select the Debtor from the Order (reads the dialog table, exact match, native row selection) | Done, the Invoice address box is verified; the Delivery address is not compared yet |
 | 2.5 to 2.7, 2.9, 2.11 Create the Debtor (company, contact, billing address, alias, Net) | Done, record reopened and every field compared |
-| 2.8 Address roles: Invoice role on the Main address, Delivery role or a second delivery address | **Not done** |
-| 2.10 Payment method (select or create) | Partly: created with the default payment code; the required code mapping (for example Bank Transfer = Credit transfer) is **not done** |
+| 2.8 Address roles: Invoice role on the Main address, Delivery role or a second delivery address | Done, reopened and compared by role (the e-mail address does not persist for this two-address debtor; reported as a warning) |
+| 2.10 Payment method (select or create) | Done: created once, reused afterwards, with the mapped code (Bank Transfer = Credit transfer, Credit Card, SEPA Direct Debit) |
 | 2.12, 2.13 Back to the Order and select the new Debtor | Done |
 | 3.2, 3.3 Select a Product from the Order by exact SKU (verified by Total Net and the Items grid, offline OCR fallback) | Done |
 | 3.4 to 3.6 VAT (look up, create with code S) | Partly: reused by name only; the value and the code are not compared |
@@ -28,9 +28,9 @@ Step numbers refer to the task document.
 | 4.1 to 4.3 Confirm addresses, lines and totals against the image | Partly |
 | 4.4 to 4.7 Save the Order, check Data > Documents, create the linked Invoice | **Not started** |
 | 5.1 to 5.6 Invoice: payment method, PAID date and value, save, verify | **Not started** |
-| Check before create for products | **Not done**: re-running creates duplicate products |
+| Check before create | VAT and payment methods: done. Products: looked up by SKU before creating; a full re-run on a non-empty data folder was not tested end to end |
 | One-command runner and run report | **Not started** (each step has its own script in `tools/`) |
-| Annotated screenshots or a short recording | **Not included yet** |
+| Annotated screenshots or a short recording | Annotated screenshots of the created master data are included (see Screenshots); there is no recording because there is no complete run |
 
 ## Screenshots (annotated, cropped to the Fakturama window)
 
