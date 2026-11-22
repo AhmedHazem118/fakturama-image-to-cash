@@ -3,6 +3,7 @@
 Steps implemented so far: open_new_order, fill_header.
 """
 import logging
+import time
 
 from . import ui
 from .validate import fakturama_date
@@ -105,34 +106,149 @@ def toggle_editor_maximized(win):
     ui.click(min(buttons, key=lambda b: b.rectangle().top))
 
 
+def ensure_editor_maximized(win):
+    """Maximize the editor panel only if it is not maximized yet (its button is named 'Maximize' when it is not,
+    'Restore' when it is), so a repeated call never toggles it back."""
+    buttons = [b for b in win.descendants(control_type="Button")
+               if b.window_text() in ("Maximize", "Restore") and b.rectangle().top > 100 and b.rectangle().width() > 0]
+    if not buttons:
+        ui.fail("Editor maximize button not found")
+    top = min(buttons, key=lambda b: b.rectangle().top)
+    if top.window_text() == "Maximize":
+        ui.click(top)
+        time.sleep(1.2)
+
+
+def open_debtor_from_list(win, title):
+    """Open the first row of the Debtors list (a double-click inside the table body) and wait for its editor.
+    `title` is the editor's title, 'Company, First Last'. Only meant for a short list (one or two debtors)."""
+    from pywinauto.keyboard import send_keys
+    send_keys("{ESC}")
+    nav = [n for n in win.descendants(control_type="Text")
+           if n.window_text() == "Debtors" and n.rectangle().left < 400 and n.rectangle().width() > 0]
+    if not nav:
+        ui.fail("The 'Debtors' entry of the navigation panel is not visible")
+    nav[0].click_input(double=True)
+    time.sleep(2.2)
+    panes = [d for d in win.descendants(control_type="Pane")
+             if d.rectangle().width() == 552 and d.rectangle().height() > 300 and d.is_visible()]
+    if not panes:
+        ui.fail("The Debtors list table was not found")
+    panes[-1].click_input(double=True, coords=(100, 38))
+    return ui.wait_until(lambda: next((d for d in win.descendants(control_type="Pane") if d.window_text() == title), None),
+                         10, what=f"editor {title!r}")
+
+
 def _open_tab(editor, name):
     ui.click(ui.find_by_name(editor, name, "TabItem"))
 
 
-def fill_debtor(editor, debtor, payment=None):
-    """Fill the identity + main address + alias fields, reading each one back. Does NOT save."""
+ROLE_NAMES = ("Invoice addr.", "Delivery addr.")
+
+
+def _fill_address(editor, a, email=None, phone=None):
+    """Fill the address tab that is currently ACTIVE (UIA shows only the active tab's fields):
+    optional 'additional name', Street, ZIP / City, Country, optional e-mail and phone."""
+    if a.get("name"):
+        ui.set_text(ui.find_by_name(editor, "additional name", "Edit"), a["name"])
+    ui.set_text(ui.find_by_name(editor, "Street", "Edit"), a["street"])
+    zip_box, city_box = ui.edits_after_label(editor, "ZIP - City", 2)
+    ui.set_text(zip_box, a["zip"])
+    ui.set_text(city_box, a["city"])
+    select_in_combo(ui.find_by_name(editor, "Country", "ComboBox"), a["country"])
+    if email:
+        ui.set_text(ui.find_by_name(editor, "E-Mail", "Edit"), email)
+    if phone:
+        ui.set_text(ui.find_by_name(editor, "Telephone", "Edit"), phone)
+
+
+def _same_address(debtor):
+    """True when there is no separate delivery address (task step 2.8: then the Main address also gets the
+    Delivery role and no second address is created)."""
+    d = debtor.get("delivery")
+    if not d:
+        return True
+    same_lines = all((d.get(k) or "").strip() == (debtor.get(k) or "").strip() for k in ("street", "zip", "city", "country"))
+    name = (d.get("name") or "").strip()
+    return same_lines and name in ("", (debtor.get("company") or "").strip())
+
+
+def _role_boxes(win):
+    return {c.window_text(): c for c in win.descendants(control_type="CheckBox") if (c.window_text() or "") in ROLE_NAMES}
+
+
+def _open_role_popup(win, editor):
+    """The small '>' button beside 'address type' opens a popup with two checkboxes (probe: D42)."""
+    edit = ui.edits_after_label(editor, "address type", 1)[0]
+    er = edit.rectangle()
+    btn = next((b for b in editor.descendants(control_type="Button")
+                if (b.window_text() or "") == "" and abs(b.rectangle().top - er.top) < 6 and b.rectangle().left >= er.right - 6), None)
+    if btn is None:
+        ui.fail("The button beside 'address type' was not found (is the address row visible?)")
+    ui.click(btn)
+    return ui.wait_until(lambda: _role_boxes(win) or None, 5, what="address role popup")
+
+
+def set_roles(win, editor, invoice, delivery):
+    """Tick/untick 'Invoice addr.' and 'Delivery addr.' for the ACTIVE address tab and verify the result."""
+    from pywinauto.keyboard import send_keys
+    _open_role_popup(win, editor)
+    want = {"Invoice addr.": bool(invoice), "Delivery addr.": bool(delivery)}
+    for name, wanted in want.items():
+        box = _role_boxes(win)[name]
+        if bool(box.get_toggle_state()) != wanted:
+            box.click_input()
+            time.sleep(0.5)
+    got = {n: bool(b.get_toggle_state()) for n, b in _role_boxes(win).items()}
+    send_keys("{ESC}")
+    time.sleep(0.4)
+    if got != want:
+        ui.fail(f"Address roles are {got}, expected {want}")
+    log.info("address roles set: %s", got)
+
+
+def read_roles(win, editor):
+    from pywinauto.keyboard import send_keys
+    _open_role_popup(win, editor)
+    got = {n: bool(b.get_toggle_state()) for n, b in _role_boxes(win).items()}
+    send_keys("{ESC}")
+    time.sleep(0.4)
+    return got
+
+
+def add_second_address(win, editor, delivery):
+    """'+' adds the tab 'additional address #1'; fill it and give it the Delivery role only."""
+    ui.click(ui.find_by_name(editor, "+", "Button"))
+    ui.wait_until(lambda: any(t.window_text() == "additional address #1" for t in editor.descendants(control_type="TabItem")),
+                  6, what="the tab 'additional address #1'")
+    _fill_address(editor, delivery)
+    set_roles(win, editor, invoice=False, delivery=True)
+
+
+def fill_debtor(editor, debtor, payment=None, win=None):
+    """Fill the identity, the Main address (Invoice role, plus Delivery role when there is no separate delivery
+    address), a second delivery address when the image has a different one, and the Miscellaneous tab.
+    Reads every field back. Does NOT save. The editor panel must be maximized."""
+    win = win or ui.main_window()
     ui.set_text(ui.find_by_name(editor, "Company", "Edit"), debtor["company"])
     first, last = ui.edits_after_label(editor, "First Name Last Name", 2)
     ui.set_text(first, debtor["first_name"])
     ui.set_text(last, debtor["last_name"])
 
     _open_tab(editor, "Addresses")
-    ui.set_text(ui.find_by_name(editor, "Street", "Edit"), debtor["street"])
-    zip_box, city_box = ui.edits_after_label(editor, "ZIP - City", 2)
-    ui.set_text(zip_box, debtor["zip"])
-    ui.set_text(city_box, debtor["city"])
-    select_in_combo(ui.find_by_name(editor, "Country", "ComboBox"), debtor["country"])
-    if debtor.get("email"):
-        ui.set_text(ui.find_by_name(editor, "E-Mail", "Edit"), debtor["email"])
-    if debtor.get("phone"):
-        ui.set_text(ui.find_by_name(editor, "Telephone", "Edit"), debtor["phone"])
+    _fill_address(editor, debtor, email=debtor.get("email"), phone=debtor.get("phone"))
+    same = _same_address(debtor)
+    set_roles(win, editor, invoice=True, delivery=same)
+    if not same:
+        add_second_address(win, editor, debtor["delivery"])
+        _open_tab(editor, "Main address")          # leave the main address showing
 
     _open_tab(editor, "Miscellaneous")
     ui.set_text(ui.find_by_name(editor, "Alias name", "Edit"), debtor["alias"])
     select_in_combo(ui.field_by_label(editor, "Net or Gross", ("ComboBox",)), "Net")
     if payment:
         pay_combo = ui.find_by_name(editor, "Payment", "ComboBox")
-        options = pay_combo.item_texts()
+        options = _dropdown_items(pay_combo)
         log.info("Payment dropdown offers: %s", options)
         if payment not in options:
             ui.fail(f"Payment method {payment!r} not in the dropdown {options}")
@@ -140,7 +256,85 @@ def fill_debtor(editor, debtor, payment=None):
     discount = ui.read_value(ui.find_by_name(editor, "Discount", "Edit"))
     if discount != "0%":
         ui.fail(f"Debtor discount is {discount!r}, expected the default 0%")
-    log.info("Debtor form filled: %s", debtor["company"])
+    log.info("Debtor form filled: %s (separate delivery address: %s)", debtor["company"], not same)
+
+
+def _address_tab_names(editor):
+    return [t.window_text() for t in editor.descendants(control_type="TabItem")
+            if t.window_text() == "Main address" or t.window_text().startswith("additional address")]
+
+
+def read_debtor(win, editor):
+    """Everything fill_debtor wrote, read back from an open Debtor editor (used to verify a saved record).
+    Addresses are keyed by their ROLE ('invoice' / 'delivery'): after a save and reopen Fakturama may list the
+    address tabs in a different order, so tab position must never be trusted (E30)."""
+    out = {"company": ui.read_value(ui.find_by_name(editor, "Company", "Edit"))}
+    first, last = ui.edits_after_label(editor, "First Name Last Name", 2)
+    out["first_name"], out["last_name"] = ui.read_value(first), ui.read_value(last)
+
+    def read_tab():
+        zip_box, city_box = ui.edits_after_label(editor, "ZIP - City", 2)
+        return {"name": ui.read_value(ui.find_by_name(editor, "additional name", "Edit")),
+                "street": ui.read_value(ui.find_by_name(editor, "Street", "Edit")),
+                "zip": ui.read_value(zip_box), "city": ui.read_value(city_box),
+                "country": ui.find_by_name(editor, "Country", "ComboBox").selected_text().strip(),
+                "email": ui.read_value(ui.find_by_name(editor, "E-Mail", "Edit")),
+                "phone": ui.read_value(ui.find_by_name(editor, "Telephone", "Edit")),
+                "roles": read_roles(win, editor)}
+
+    _open_tab(editor, "Addresses")
+    time.sleep(0.5)
+    out["tabs"] = {}
+    for tab in _address_tab_names(editor):
+        _open_tab(editor, tab)
+        time.sleep(0.4)
+        out["tabs"][tab] = read_tab()
+    out["invoice"] = next((a for a in out["tabs"].values() if a["roles"].get("Invoice addr.")), None)
+    out["delivery"] = next((a for a in out["tabs"].values() if a["roles"].get("Delivery addr.")), None)
+    _open_tab(editor, "Miscellaneous")
+    out["alias"] = ui.read_value(ui.find_by_name(editor, "Alias name", "Edit"))
+    out["net_gross"] = ui.field_by_label(editor, "Net or Gross", ("ComboBox",)).selected_text().strip()
+    out["payment"] = ui.find_by_name(editor, "Payment", "ComboBox").selected_text().strip()
+    return out
+
+
+def check_debtor(read, debtor, payment, soft=("email",)):
+    """Compare a read-back debtor with the extracted one, address by ROLE. Returns (errors, warnings).
+    Fields listed in `soft` produce a warning instead of an error (an optional field the application may not keep)."""
+    errors, warnings = [], []
+
+    def eq(label, got, want, field=None):
+        if (got or "").strip() != (want or "").strip():
+            msg = f"{label}: saved {got!r}, expected {want!r}"
+            (warnings if field in soft else errors).append(msg)
+
+    eq("company", read["company"], debtor["company"])
+    eq("first name", read["first_name"], debtor["first_name"])
+    eq("last name", read["last_name"], debtor["last_name"])
+    inv, dlv = read["invoice"], read["delivery"]
+    if inv is None:
+        errors.append("no address has the Invoice role")
+    else:
+        for k in ("street", "zip", "city", "country", "email", "phone"):
+            eq(f"invoice {k}", inv[k], debtor.get(k), field=k)
+    same = _same_address(debtor)
+    if same:
+        if dlv is not inv and dlv is not None:
+            errors.append("a separate delivery address exists although billing and delivery are identical")
+        if inv is not None and not inv["roles"].get("Delivery addr."):
+            errors.append("the address does not carry the Delivery role")
+    else:
+        d = debtor["delivery"]
+        if dlv is None or dlv is inv:
+            errors.append("the separate delivery address (Delivery role) is missing")
+        else:
+            for k in ("street", "zip", "city", "country"):
+                eq(f"delivery {k}", dlv[k], d.get(k))
+            eq("delivery additional name", dlv["name"], d.get("name"))
+    eq("alias", read["alias"], debtor["alias"])
+    eq("net or gross", read["net_gross"], "Net")
+    eq("payment", read["payment"], payment)
+    return errors, warnings
 
 
 # ------------------------------------------------------------ payment term
@@ -185,6 +379,21 @@ def _save_current(win, editor_tab=None):
     ui.click(ui.find_by_name(win, "Save the current contents", "Button"))
 
 
+# Task step 2.10.4: payment code for each extracted payment method.
+PAYMENT_CODES = {"Bank Transfer": "Credit transfer", "Credit Card": "Credit card", "SEPA Direct Debit": "SEPA direct debit"}
+
+
+def _select_loose(combo, text):
+    """Select the dropdown entry whose text equals `text` ignoring surrounding spaces (this dropdown's entries
+    have a trailing space), then read the selection back."""
+    items = _dropdown_items(combo)
+    match = next((i for i in items if i.strip() == text), None)
+    if match is None:
+        ui.fail(f"Dropdown has no entry {text!r}; entries: {items}")
+    combo.select(match)
+    ui.wait_until(lambda: combo.selected_text().strip() == text, 4, 0.2, what=f"dropdown to show {text!r}")
+
+
 def create_payment_term(win, name):
     """New > New Term of Payment, set Name, save once, check the tab lost its '*' (= saved)."""
     from pywinauto.keyboard import send_keys
@@ -196,6 +405,16 @@ def create_payment_term(win, name):
     editor = spec.wrapper_object()
     ui.set_text(ui.find_by_name(editor, "Name", "Edit"), name)
     ui.set_text(ui.find_by_name(editor, "Description", "Edit"), name)
+    # Task step 2.10.4: the payment code follows a fixed mapping; an unknown method stops the run.
+    wanted_code = PAYMENT_CODES.get(name)
+    if wanted_code is None:
+        ui.fail(f"Payment method {name!r} has no code mapping (known: {sorted(PAYMENT_CODES)}); manual review")
+    _select_loose(ui.field_by_label(editor, "!editorPaymentPaymentcode!", ("ComboBox",)), wanted_code)
+    # Task step 2.10.5: cash discount, discount days and net days must be 0 (the defaults); assert, do not assume.
+    for label in ("Cash discount", "Discount Days", "Net Days"):
+        shown = ui.read_value(ui.find_by_name(editor, label, "Edit"))
+        if not ui.same_money(shown, 0):
+            ui.fail(f"{label} is {shown!r}, expected 0")
     _save_current(win)
     # Saved = the editor tab is now titled with the entry's own name.
     ui.wait_until(lambda: any(t.window_text() == name for t in win.descendants(control_type="TabItem")),
