@@ -769,3 +769,58 @@ def _verify_line(win, sku, already):
         delete_last_line(win)
         ui.fail(f"The added line shows Item No. {got!r}, not {sku!r}; the line was removed again (manual review)")
     return "vision"
+
+
+# ------------------------------------------------------------ line values (quantity, discount)
+# Findings (E33/E34/D44): typing only works when a REAL mouse click has put the focus into the cell editor (the
+# window-message click does not). After Enter the cell commits and Fakturama recalculates the totals.
+COL_QTY_X, COL_DISCOUNT_X, ROW0_Y, ROW_H = 112, 990, 37, 25     # offsets inside the Items grid window
+
+
+def _focus_rect():
+    from pywinauto.uia_defines import IUIA
+    r = IUIA().iuia.GetFocusedElement().CurrentBoundingRectangle
+    return r.left, r.top, r.right, r.bottom
+
+
+def _edit_cell(win, row, col_x, text):
+    """Click one cell with the real mouse, prove the keyboard focus is inside that cell, type and press Enter."""
+    from pywinauto.keyboard import send_keys
+    grid = _native_items_grid(win)
+    rect = _items_grid_rect(win)
+    y = ROW0_Y + ROW_H * row
+    grid.click_input(coords=(col_x, y))
+    time.sleep(0.7)
+    left, top, right, bottom = _focus_rect()
+    want_top = rect.top + 25 + ROW_H * row
+    if not (rect.left <= left <= rect.right and abs(top - want_top) <= 6 and right - left < 200):
+        ui.fail(f"The keyboard focus is not in the cell (row {row + 1}, x {col_x}): focus box {(left, top, right, bottom)}")
+    send_keys(text, with_spaces=False)
+    time.sleep(0.3)
+    send_keys("{ENTER}")
+    time.sleep(1.2)
+
+
+def _money(text):
+    from decimal import Decimal
+    return Decimal(text.replace("$", "").replace(",", "").replace("%", "").strip())
+
+
+def set_line_values(win, row, quantity, discount_percent):
+    """Set quantity and discount of order line `row` (0-based). Each cell is proven to have the focus before
+    typing; the caller verifies the Total Net afterwards (verify_order_totals)."""
+    _edit_cell(win, row, COL_QTY_X, str(quantity))
+    if _money(str(discount_percent)) != 0:
+        _edit_cell(win, row, COL_DISCOUNT_X, str(discount_percent))
+
+
+def verify_order_totals(win, net, vat, gross):
+    """Compare the Total Net / VAT / Total boxes of the open order with the expected numbers (tolerance 0.02)."""
+    got = {"net": _money(ui.read_value(ui.field_by_label(win, "Total Net", ("Edit",)))),
+           "vat": _money(ui.read_value(ui.field_by_label(win, "VAT", ("Edit",)))),
+           "gross": _money(ui.read_value(ui.field_by_label(win, "Total", ("Edit",))))}
+    want = {"net": net, "vat": vat, "gross": gross}
+    bad = {k: (str(got[k]), str(want[k])) for k in got if abs(got[k] - _money(str(want[k]))) > _money("0.02")}
+    if bad:
+        ui.fail(f"Order totals differ from the image (read, expected): {bad}")
+    return got
