@@ -27,7 +27,7 @@ Step numbers refer to the task document.
 | Step | Status |
 |---|---|
 | 1.1, 1.2 Read the order image into JSON (Gemini vision, fixed schema, model fallback) | Done: matches the answer key for the task's example image |
-| Validate (line totals, sums, VAT, dates, payment rules), 19 unit tests | Done |
+| Validate (line totals, sums, VAT, dates, payment rules), 26 unit tests | Done |
 | 1.3 to 1.8 Open a New Order, Date, Cust.Ref., price mode Net, VAT mode | Done, read back on screen |
 | 2.1 to 2.4 Select the Debtor from the Order (reads the dialog table, exact match, native row selection) | Done: the Invoice address box is verified; the Delivery address is not compared in the Order |
 | 2.5 to 2.7, 2.9, 2.11 Create the Debtor (company, contact, billing address, alias, Net) | Done, record reopened and every field compared |
@@ -80,7 +80,7 @@ It prints one line per stage (`ok`, `created`, `reused`, `STOP`), writes `run_ou
 Other commands:
 
 ```powershell
-uv run python -m unittest discover -s tests -t . -v           # validator and .env tests, no Fakturama and no key needed
+uv run python -m unittest discover -s tests -t . -v           # validator, JSON-structure and .env tests, no Fakturama and no key needed
 uv run python -m tools.try_extract samples/task_example_order.png # reads the example image with Gemini and compares it to the answer key
 uv run python -m tools.switch_workspace D:\FaktumaData_new   # points Fakturama to a new empty data folder (restarts it)
 ```
@@ -141,7 +141,7 @@ In priority order, about an hour each:
 ```
 fakturama_bot/   extract.py, validate.py, ui.py, vision.py, flow.py, run.py
 pyproject.toml, uv.lock, .env.example   dependencies (pinned) and the key template
-tests/           unit tests for the validator and the task example
+tests/           unit tests: validator, task example, JSON structure (schema) and the .env loader
 samples/         the task's example order image and its answer key
 tools/           try_* scripts (one stage each, for debugging), helpers (switch_workspace, annotate_run_shots, inspect_ui)
 tools/probes/    look-only experiments and raw UIA dumps used to learn how Fakturama behaves (run from the project root with PYTHONPATH=.)
