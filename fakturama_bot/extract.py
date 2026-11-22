@@ -71,7 +71,7 @@ def ask_gemini(image_bytes, mime, prompt, schema, retries=1, timeout=45):
     (404) or stalled (timeout) model is skipped, and the model that answered is logged. `timeout` is per attempt."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        raise ExtractionError("GEMINI_API_KEY is not set. See README, setup step 3.")
+        raise ExtractionError("GEMINI_API_KEY is not set. See the README, section Setup.")
 
     data = base64.b64encode(image_bytes).decode()
     body = json.dumps({

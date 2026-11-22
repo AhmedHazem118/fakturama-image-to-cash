@@ -78,7 +78,7 @@ Other commands:
 ```powershell
 python -m unittest discover -s tests -t . -v                  # validator tests, no Fakturama and no key needed
 python -m tools.try_extract samples/task_example_order.png    # reads the example image with Gemini and compares it to the answer key
-python tools/switch_workspace.py D:\FaktumaData_new           # points Fakturama to a new empty data folder (restarts it)
+python -m tools.switch_workspace D:\FaktumaData_new           # points Fakturama to a new empty data folder (restarts it)
 ```
 
 The other scripts in `tools/` are the step-by-step scripts used during development (`try_*`); `tools/probes/` holds the look-only experiments. Their docstrings say what state they expect.

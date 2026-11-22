@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 
-# Run output: full-screen screenshots; cropped ones go in docs/screenshots/
+# Run output: full-screen screenshots; the cropped ones are made by the runner with --shots
 run_output/
 
 # Secrets: the Gemini key lives only in the GEMINI_API_KEY environment variable
