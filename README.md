@@ -2,60 +2,42 @@
 
 Take-home project for TJM Labs. A Python robot that reads an order image with a vision model, validates it, and drives the Fakturama desktop application through Microsoft UI Automation (UIA) to create the master data and the Order.
 
-**This is a partial implementation.** The first half of the flow works and is verified on the real application; the second half (items table, saving the Order, the linked Invoice) is not built. Everything skipped is listed below, with the reason and the next step.
+**This is a partial implementation.** The image reading, the validation, and the first part of the flow (Order header, payment method, Debtor, VAT, products, adding the products to the Order) are built and were verified step by step on the real application. Several steps the task asks for are **not** built or only partly met, and the whole chain has not yet been run end to end on the task's example image. Everything skipped is listed below with the reason and the next step.
 
 The Part 1 design document is in [docs/Design_Doc_Fakturama.docx](docs/Design_Doc_Fakturama.docx).
 
 ## Status
 
+Step numbers refer to the task document.
+
 | Step | Status |
 |---|---|
-| Read the order image into JSON (Gemini vision, fixed schema, model fallback) | Done: matches the answer key on the task's example image and on my fake sample |
+| 1.1, 1.2 Read the order image into JSON (Gemini vision, fixed schema, model fallback) | Done: matches the answer key for the task's example image |
 | Validate (line totals, sums, VAT, dates, payment rules), 15 unit tests | Done |
-| Open a New Order, set date, Cust.Ref., price mode Net, check VAT mode | Done, verified on screen |
-| Create payment method "Bank Transfer" | Done |
-| Create the Debtor (company, contact, address, alias, Net, payment method) | Done, record reopened and every field compared |
-| Select the Debtor in the Order (reads the dialog table, exact match, native row selection) | Done, Order's address box verified |
-| Create VAT rates (VAT 19%, VAT 7%) | Done, checked in the VATs list |
-| Create products (SKU, gross = net x (1 + VAT/100), cost 0, stock 0) | Done, checked in the Products list |
-| Check before create: VAT entries and payment methods (reads the real dropdowns; reuses by name) | Done; the percentage of an existing entry is not compared |
-| Check before create: products | **Not done**: re-running creates duplicate products |
-| Add the products to the Order (type the SKU; verified by Total Net and the Items grid, offline OCR fallback) | Done: Total Net $100.00 and VAT $15.40 as expected |
-| Set quantity and discount per line in the Items table | **Not started** (price and VAT already come with the product) |
-| Save the Order and verify it in Data > Documents | **Not started** |
-| Create the linked Invoice from the Order, set payment status, verify | **Not started** |
+| 1.3 to 1.8 Open a New Order, Date, Cust.Ref., price mode Net, VAT mode | Done, verified on screen |
+| 2.1 to 2.4 Select the Debtor from the Order (reads the dialog table, exact match, native row selection) | Done, the Invoice address box is verified; the Delivery address is not compared yet |
+| 2.5 to 2.7, 2.9, 2.11 Create the Debtor (company, contact, billing address, alias, Net) | Done, record reopened and every field compared |
+| 2.8 Address roles: Invoice role on the Main address, Delivery role or a second delivery address | **Not done** |
+| 2.10 Payment method (select or create) | Partly: created with the default payment code; the required code mapping (for example Bank Transfer = Credit transfer) is **not done** |
+| 2.12, 2.13 Back to the Order and select the new Debtor | Done |
+| 3.2, 3.3 Select a Product from the Order by exact SKU (verified by Total Net and the Items grid, offline OCR fallback) | Done |
+| 3.4 to 3.6 VAT (look up, create with code S) | Partly: reused by name only; the value and the code are not compared |
+| 3.7 to 3.12 Create the Product (gross = net x (1 + VAT/100), cost 0, stock 0) and select it | Done |
+| 3.13 to 3.16 Quantity, discount and line price on each order line | **Not done** |
+| 3.1, 3.17 Loop over every item | **Not done** (the step functions exist, the loop does not) |
+| 4.1 to 4.3 Confirm addresses, lines and totals against the image | Partly |
+| 4.4 to 4.7 Save the Order, check Data > Documents, create the linked Invoice | **Not started** |
+| 5.1 to 5.6 Invoice: payment method, PAID date and value, save, verify | **Not started** |
+| Check before create for products | **Not done**: re-running creates duplicate products |
 | One-command runner and run report | **Not started** (each step has its own script in `tools/`) |
-
-## Screenshots (real runs, Fakturama window only, fake data)
-
-**1. Order with header, selected debtor and the products created.** Date, Cust.Ref. and price mode Net were set by the bot and read back. The Address box was filled by selecting the debtor in the "Select the address" dialog and verified afterwards. The bottom panel lists the three products the bot created, with gross prices 59.50, 23.80 and 32.10.
-
-![Order header, debtor and products](docs/screenshots/01_order_header_and_debtor.png)
-
-**2. Debtors list.** The debtor created by the bot: customer CUST000001, Anna Keller, Blue Harbor Trading GmbH, ZIP 20457, Hamburg. The record was reopened and every field compared.
-
-![Debtors list](docs/screenshots/02_debtors_list.png)
-
-**3. VAT entries.** "VAT 19%" and "VAT 7%" were created next to the built-in "Tax-free"; the list shows the stored values 19.00 % and 7.00 %.
-
-![VAT entries](docs/screenshots/03_vats_list.png)
-
-**4. Products.** KB-100, MS-220 and MN-330 with the gross price computed as net x (1 + VAT/100) and the matching VAT.
-
-![Products](docs/screenshots/04_products_list.png)
-
-**5. The Order with its three items.** Added by the bot through the product dialog (typing the SKU) and verified: each line shows the product's net unit price and VAT, Total Net is $100.00 and VAT is $15.40 (9.50 + 3.80 + 2.10). Quantity and discount are still the defaults (1.00 and 0 %); setting them is the next step.
-
-![Order with items](docs/screenshots/05_order_with_items.png)
-
-Re-create them with `python -m tools.take_readme_screenshots` and `python -m tools.take_items_screenshot` (it crops to the Fakturama window only).
+| Annotated screenshots or a short recording | **Not included yet** |
 
 ## Requirements
 
 - Windows 10 or 11, a screen of 1920 x 1080 (positions inside tables are derived from measured control sizes at this layout).
-- Fakturama 2.2.1 with the **English** user interface, open, main window not minimized, with a data folder selected.
+- Fakturama 2.2.1 with the **English** user interface, open, main window not minimized, using a **new, empty data folder** (File > Select Workspace). The create steps are not idempotent yet.
 - Python 3.12.
-- A Gemini API key (free tier works). Use fake data only: free-tier inputs may be used by the provider.
+- A Gemini API key (free tier works). Use synthetic data only: free-tier inputs may be used by the provider.
 
 ## Setup
 
@@ -71,16 +53,15 @@ Optional: `GEMINI_MODEL` puts your own model first. If the preferred model is ov
 From the project folder:
 
 ```powershell
-python -m unittest discover -s tests -t . -v     # validator tests, no Fakturama and no key needed
-python -m tools.try_extract samples/task_example_order.png   # reads the task's example image with Gemini and compares to its answer key
-python -m tools.try_extract                      # same for my fake sample (samples/order_sample.png)
-python -m tools.try_header                       # opens a New Order and fills the header, reading each value back
-python -m tools.try_select_product MS-220        # adds a product to the open, maximized order and verifies it
+python -m unittest discover -s tests -t . -v                  # validator tests, no Fakturama and no key needed
+python -m tools.try_extract samples/task_example_order.png    # reads the task's example image with Gemini and compares it to the answer key
+python -m tools.try_header                                    # opens a New Order and fills the header, reading each value back
+python -m tools.try_select_product CHR-ERG-01                 # adds a product to the open, maximized order and verifies it
 ```
 
 The other scripts in `tools/` (`try_payment`, `try_debtor`, `try_vat`, `try_product`, `try_select_debtor`) are the step-by-step scripts used during development. They expect Fakturama to be in a specific state (for example an editor already open) and are described in their docstrings. A single entry point that runs the whole flow does not exist yet.
 
-`samples/task_example_order.png` is the example order image from the task (synthetic data) with its answer key `samples/task_example_order.expected.json`. `samples/order_sample.png` is a second, fake order generated by `tools/make_sample_order.py`, with `samples/order_sample.expected.json`.
+`samples/task_example_order.png` is the example order image from the task (synthetic data); `samples/task_example_order.expected.json` is its answer key.
 
 ## How it works
 
@@ -98,39 +79,39 @@ Principles: names and labels instead of coordinates; write then read back; verif
 
 Findings that shaped the code:
 
-- Forms and dropdowns are readable through UIA. The list tables (Debtors, VATs, Products, the address dialog) and the Items table are custom-drawn and appear as anonymous panes.
-- Simulated mouse clicks never selected a row in the address dialog. Sending the double-click as a window message to the table's native window (win32 backend) did.
+- Forms and dropdowns are readable through UIA. The list tables (Debtors, VATs, Products, the address and product dialogs) and the Items table are custom-drawn and appear as anonymous panes.
+- Simulated mouse clicks never selected a row in the selection dialogs. Sending the double-click as a window message to the table's native window (win32 backend) did.
 - Fakturama silently dropped an e-mail address ending in `.example`. Saved records are therefore reopened and compared field by field.
+- In the product dialog, typing a full SKU adds the product by itself when exactly one product matches, so every add is verified (Total Net grows by the net price, the SKU appears in the grid).
 - The toolbar Save acts on the active panel, so the editor's own tab is activated before saving.
 - Typed text goes through pywinauto where `+`, `^`, `%`, `~`, `(`, `)`, `{`, `}` are commands, so they are escaped (a phone number `+49` was typed as `$9`).
 
 ## Limitations and skipped items
 
-- Quantity and discount per line, Order save, Invoice, payment status: not built (see Status).
-- Not fully idempotent: products are created without first checking whether they exist, and an existing VAT entry or payment method is reused by name only (its percentage or settings are not compared). Run against a clean data folder.
-- Tested on one fake order. Other layouts, photos, rotated or multi-page images, other languages and number formats are untested.
+- Not built: address roles and the delivery address, the payment-code mapping, quantity and discount per line, the loop over items, saving the Order, the linked Invoice and the payment status (see Status).
+- Not fully idempotent: products are created without first checking whether they exist, and an existing VAT entry or payment method is reused by name only (its value, code or settings are not compared). Use a new, empty data folder.
+- The extractor is tested on the task's example image only. Other layouts, photos, rotated or multi-page images, other languages and number formats are untested.
 - English user interface and one screen layout assumed.
 - The vision read of tables sends a screenshot crop to the model, costs an API call and can time out. Verification of an added product falls back to an offline Windows OCR (weaker: it checks that the SKU is present, not which row). With real customer data this needs a private or paid model.
 - Company names in the address dialog are cut off by the column width, so they are matched by prefix and verified in full in the Order afterwards.
-- The reduced 7% VAT uses the default e-invoice code "S (Standard rate)", following the task's example.
-- A screen recording is not included. The screenshots below were taken from the real application after the steps ran.
-- The vision calls to Gemini can be slow: during the last check even a one-word request timed out for over 30 seconds while the model list answered in 2 seconds, so the table reads and the image extraction depend on the service being responsive.
+- The Fakturama version used here has the Payment dropdown on the Miscellaneous tab of the Debtor editor and fills it when the editor opens, so the payment method is created before the Debtor form is opened (the task creates it while the Debtor editor is open).
+- Annotated screenshots and a screen recording are not included yet.
 
 ## If you had 3 more hours, what would you do?
 
-1. Make re-runs safe: check before create for VAT, products, payment methods and debtors, plus a run report of what was created, reused or skipped.
-2. Finish the remaining stages in order: the Items table, saving the Order with a reopen-and-compare check, then the linked Invoice and paid status.
-3. Measure the vision table reader against a cheaper approach and cache results; compare accuracy and time.
+1. Close the gaps in the Debtor and payment steps: address roles with a second delivery address, the payment-code mapping, and an exact VAT check (name, value and code).
+2. Finish the remaining stages in order: quantity and discount per line, saving the Order with a reopen-and-compare check, then the linked Invoice and paid status.
+3. Make re-runs safe: check before create for products and debtors, plus a run report of what was created, reused or skipped, and one entry point that runs the whole flow.
 4. Test harder orders: rotated or blurred photos, German number format, missing discount, several pages, an unknown payment method.
 5. Add a review queue: when the bot stops, save the extracted data and a screenshot so a person can fix it and resume instead of restarting.
-6. Make the UI layer language-independent, tolerate several open editors, and add an end-to-end test on a clean Fakturama database.
+6. Produce annotated screenshots and a short recording of a full run, and add an end-to-end test on a clean Fakturama database.
 
 ## Repository layout
 
 ```
 fakturama_bot/   extract.py, validate.py, ui.py, vision.py, flow.py
-tests/           validator unit tests
-samples/         fake order image and its answer key
+tests/           unit tests for the validator and the task example
+samples/         the task's example order image and its answer key
 tools/           probe scripts (look only) and try scripts (one step each), UIA control dumps
 docs/            Part 1 design document
 ```

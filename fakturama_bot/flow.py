@@ -152,7 +152,7 @@ def close_tab(win, title, discard=False):
     send_keys("{ESC}")
     ui.click(ui.find_by_name(win, "File", "MenuItem"))
     close_item = ui.wait_until(
-        lambda: next((m for m in win.descendants(control_type="MenuItem") if (m.window_text() or "").startswith("Close	")), None),
+        lambda: next((m for m in win.descendants(control_type="MenuItem") if ((m.window_text() or "") == "Close" or (m.window_text() or "").startswith("Close	"))), None),
         5, what="File > Close entry")
     ui.click(close_item)
     if discard:

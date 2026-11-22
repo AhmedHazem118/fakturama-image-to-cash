@@ -10,7 +10,7 @@ from fakturama_bot import flow, ui
 from fakturama_bot.validate import validate
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
-v = validate(json.load(open("samples/order_sample.expected.json", encoding="utf-8")))
+v = validate(json.load(open("samples/task_example_order.expected.json", encoding="utf-8")))
 assert v.ok, v.errors
 
 win = ui.main_window()

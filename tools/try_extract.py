@@ -5,7 +5,7 @@ import json
 import sys
 from fakturama_bot.extract import extract_order
 
-image = sys.argv[1] if len(sys.argv) > 1 else "samples/order_sample.png"
+image = sys.argv[1] if len(sys.argv) > 1 else "samples/task_example_order.png"
 got = extract_order(image)
 print(json.dumps(got, indent=2))
 

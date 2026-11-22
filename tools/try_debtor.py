@@ -3,7 +3,7 @@ The editor is expected to be maximized already (run once with arg 'max' if not).
 import json, sys, time
 from fakturama_bot import flow, ui
 
-order = json.load(open("samples/order_sample.expected.json", encoding="utf-8"))
+order = json.load(open("samples/task_example_order.expected.json", encoding="utf-8"))
 win = ui.main_window()
 editor = flow._debtor_editor(win)
 if "max" in sys.argv:
