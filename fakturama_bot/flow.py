@@ -824,3 +824,70 @@ def verify_order_totals(win, net, vat, gross):
     if bad:
         ui.fail(f"Order totals differ from the image (read, expected): {bad}")
     return got
+
+
+# ------------------------------------------------------------ save the Order and prove it
+DOC_COLUMNS = ["", "Document", "Date", "Name", "Cust.Ref.", "State", "Total", "Printed"]
+
+
+def save_order(win):
+    """Save the open order once with the toolbar. Proof of the save: the tab '*New Order' becomes the order number.
+    Returns the order number (for example PO000001)."""
+    activate_order_tab(win)
+    _save_current(win, "*New Order")
+
+    def saved():
+        titles = [t.window_text() for t in win.descendants(control_type="TabItem") if t.rectangle().top < 250]
+        return next((t for t in titles if t.startswith("PO") or t.startswith("OR")), None) if "*New Order" not in titles else None
+    number = ui.wait_until(saved, 15, what="the order tab to lose its '*' and show the order number")
+    log.info("order saved as %s", number)
+    return number
+
+
+def read_documents(win):
+    """Open Data > Documents, maximize the panel so every column is visible and read the rows with the vision model."""
+    from pywinauto.keyboard import send_keys
+    from . import vision
+    send_keys("{ESC}")
+    nav = [n for n in win.descendants(control_type="Text") if n.window_text() == "Documents" and n.rectangle().left < 400 and n.rectangle().width() > 0]
+    if not nav:
+        ui.fail("The 'Documents' entry of the navigation panel is not visible")
+    nav[0].click_input(double=True)
+    time.sleep(2.0)
+    tab = next(t for t in win.descendants(control_type="TabItem") if t.window_text() == "Documents")
+    if not any(p.rectangle().width() > 850 and p.rectangle().height() > 500 for p in win.descendants(control_type="Pane") if p.is_visible()):
+        tab.click_input(double=True)          # maximize the list panel
+        time.sleep(1.8)
+    panes = [p for p in win.descendants(control_type="Pane") if p.is_visible() and p.rectangle().width() > 850 and 500 < p.rectangle().height() < 800]
+    if not panes:
+        ui.fail("The Documents table was not found")
+    body = min(panes, key=lambda p: p.rectangle().width() * p.rectangle().height())
+    ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="Documents list")
+    return vision.read_table(body.rectangle(), DOC_COLUMNS)
+
+
+def verify_saved_order(win, order, number):
+    """The Documents list must hold exactly one document: the saved order with the expected date, reference
+    (the column is cut off, so compared as a prefix), state 'open' and the gross total."""
+    rows = read_documents(win)
+    errors = []
+    if len(rows) != 1:
+        errors.append(f"expected exactly one document, the list shows {len(rows)}: {rows}")
+    else:
+        r = rows[0]
+        want_date = fakturama_date(order["order_date"])
+        ref = order["external_reference"]
+        if r["Document"].strip() != number:
+            errors.append(f"document number {r['Document']!r} != {number!r}")
+        if r["Date"].replace("  ", " ").strip() != want_date:
+            errors.append(f"date {r['Date']!r} != {want_date!r}")
+        shown = r["Cust.Ref."].strip().rstrip(".")
+        if not ref.startswith(shown) or len(shown) < 6:
+            errors.append(f"reference {r['Cust.Ref.']!r} does not match {ref!r}")
+        if r["State"].strip().lower() != "open":
+            errors.append(f"state {r['State']!r} != 'open'")
+        if abs(_money(r["Total"]) - _money(str(order["totals"]["gross"]))) > _money("0.02"):
+            errors.append(f"total {r['Total']!r} != {order['totals']['gross']}")
+    if errors:
+        ui.fail("Saved order does not match: " + "; ".join(errors))
+    return rows[0]
