@@ -123,12 +123,14 @@ Findings that shaped the code:
 
 ## If you had 3 more hours, what would you do?
 
-1. Make re-runs safe: look at what Data > Documents, Debtors and Products already hold, reuse it, and report created / reused / skipped; compare the value and code of an existing VAT entry and the debtor's delivery address in the Order.
-2. Find why the debtor's e-mail address does not persist (an application setting, a field rule or a bug) and either fix the input or document the rule.
-3. Make the Items grid layout-independent: measure the row height and the visible rows, scroll when an order has more lines than fit, and handle a missing discount or several pages.
-4. Test harder orders: rotated or blurred photos, German number format, several pages, an unknown payment method, a customer that already exists with a different address.
-5. Cut the run time: read each table once, cache what was read, and reduce vision calls with a cheaper offline check where it is reliable (the current run is about ten minutes, mostly waiting for the vision model).
-6. Add a review queue: when the bot stops, save the extracted data and a screenshot so a person can fix it and resume instead of restarting, and add an end-to-end test on a clean Fakturama database in CI.
+In priority order, about an hour each:
+
+1. **Make runs safe to repeat.** Look at Data > Documents, Debtors and Products before creating anything, reuse what exists, and report created / reused / skipped. Compare the price and VAT of an existing product, the value and code of an existing VAT entry, and the debtor's address, so a different customer with the same name is never reused by mistake. This is the biggest gap for real use, and it is what "resolve or create" asks for.
+2. **Make extraction trustworthy on harder input.** Test photos, rotation, German number format and several pages. Add an offline OCR cross-check of the key values (SKUs, reference, totals), so a misread or invented value stops the run instead of passing the arithmetic check.
+3. **Make the UI layer layout-independent and recoverable.** Measure the row height and the visible rows, scroll when an order has more lines than fit, and add a review queue: when the bot stops, save the extracted data and a screenshot so a person can fix it and resume instead of restarting.
+4. **If time remains: cut the run time without losing accuracy.** A run takes about ten minutes, almost all of it waiting for the vision model. Use the cheapest check first (UIA values, then the offline OCR) and call the vision model only when a check is ambiguous; read each table once and reuse the rows; use a small model for table reads and the stronger one for the order image. Measure the trade-off on a set of test images (field match rate and seconds per run) and keep the faster path only if the match rate does not fall.
+
+After that: find why the debtor's e-mail address is not kept by Fakturama.
 
 ## Repository layout
 
