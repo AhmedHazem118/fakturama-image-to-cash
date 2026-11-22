@@ -1,6 +1,6 @@
 # Fakturama Image-to-Cash Automation
 
-Take-home project for TJM Labs. A Python robot that reads an order image with a vision model, validates it, and drives the Fakturama desktop application through Microsoft UI Automation (UIA) from the image to a saved Order and a linked, paid Invoice, checking every step on screen.
+A Python robot that reads an order image with a vision model, validates it, and drives the Fakturama desktop application through Microsoft UI Automation (UIA) from the image to a saved Order and a linked, paid Invoice, checking every step on screen.
 
 **Status in one paragraph.** One command runs the whole chain on the task's example image: image to JSON, arithmetic validation, VAT and payment method, Order header, Debtor (created with a billing and a delivery address, reopened and compared), products, quantities and discounts, totals, the saved Order found in Data > Documents, the linked Invoice marked paid with date and value, and the Documents list showing both. It was run end to end on an empty Fakturama data folder and finished with every check green (Order PO000001 open, Invoice INV000001 paid, both 678.30). It is **not production-ready**: it is proven on that one example order, on one screen layout, and with known gaps listed below (for example the debtor's e-mail address does not persist in Fakturama and is reported as a warning, and a second run on a non-empty data folder is not supported).
 
@@ -129,8 +129,6 @@ In priority order, about an hour each:
 2. **Make extraction trustworthy on harder input.** Test photos, rotation, German number format and several pages. Add an offline OCR cross-check of the key values (SKUs, reference, totals), so a misread or invented value stops the run instead of passing the arithmetic check.
 3. **Make the UI layer layout-independent and recoverable.** Measure the row height and the visible rows, scroll when an order has more lines than fit, and add a review queue: when the bot stops, save the extracted data and a screenshot so a person can fix it and resume instead of restarting.
 4. **If time remains: cut the run time without losing accuracy.** A run takes about ten minutes, almost all of it waiting for the vision model. Use the cheapest check first (UIA values, then the offline OCR) and call the vision model only when a check is ambiguous; read each table once and reuse the rows; use a small model for table reads and the stronger one for the order image. Measure the trade-off on a set of test images (field match rate and seconds per run) and keep the faster path only if the match rate does not fall.
-
-After that: find why the debtor's e-mail address is not kept by Fakturama.
 
 ## Repository layout
 
