@@ -112,7 +112,8 @@ Findings that shaped the code:
 
 ## Limitations and skipped items
 
-- Proven on one order only (the task's example) and one screen layout. Other images (photos, rotated, several pages, other languages, number formats) are untested.
+- Proven on one order only (the task's example) and one screen layout.
+- The invoice step always ticks `paid` and sets the date and value. The task's rule for an order that is **not** PAID (leave `paid` clear, invent no date or value) is not implemented, and the invoice's copied Order Date, VAT mode, delivery address and item lines are not all compared (reference, address box and totals are). Other images (photos, rotated, several pages, other languages, number formats) are untested.
 - The data folder must be empty. A re-run on a folder that already holds the documents is not supported (the final Documents check expects exactly the Order and the Invoice of this run), and products and debtors are only found by SKU or by name and address.
 - The debtor's e-mail address is typed but was not kept by Fakturama for this two-address debtor (the cause is not found; an earlier theory about `.example` addresses was not confirmed). It is reported as a warning, and the Order and the Invoice do not depend on it.
 - VAT entries and payment methods that already exist are reused by name only (their value, code or settings are not compared). The delivery address is not compared in the Order after selecting the debtor.
