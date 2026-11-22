@@ -119,17 +119,44 @@ def toggle_editor_maximized(win):
     ui.click(min(buttons, key=lambda b: b.rectangle().top))
 
 
+LIST_TABS = ("Documents", "Debtors", "Products", "VATs", "terms of payment", "Creditors", "Shippings", "Texts", "Lists",
+             "Expenditure Vouchers", "Receipt Vouchers")
+
+
+def _editor_tabs(win):
+    return [t for t in win.descendants(control_type="TabItem")
+            if t.rectangle().top < 250 and t.rectangle().width() > 0 and t.window_text().lstrip("*") not in LIST_TABS
+            and t.window_text() != "Error"]
+
+
+def _editor_is_maximized(win):
+    """In the default layout the editors open in a narrow pane at the right (their tabs start far to the right);
+    maximized, their tabs start at the left edge of the work area. The button names Maximize/Restore cannot be
+    trusted (two panels share the same button position), so the tab position is the proof."""
+    tabs = _editor_tabs(win)
+    lists_visible = any(t.window_text().lstrip("*") in LIST_TABS and t.rectangle().top < 250 for t in win.descendants(control_type="TabItem"))
+    lists_below = any(t.window_text().lstrip("*") in LIST_TABS and t.rectangle().top >= 250 and t.rectangle().width() > 0
+                      for t in win.descendants(control_type="TabItem"))
+    return bool(tabs) and min(t.rectangle().left for t in tabs) < 700 and not lists_below
+
+
 def ensure_editor_maximized(win):
-    """Maximize the editor panel only if it is not maximized yet (its button is named 'Maximize' when it is not,
-    'Restore' when it is), so a repeated call never toggles it back."""
-    buttons = [b for b in win.descendants(control_type="Button")
-               if b.window_text() in ("Maximize", "Restore") and b.rectangle().top > 100 and b.rectangle().width() > 0]
-    if not buttons:
-        ui.fail("Editor maximize button not found")
-    top = min(buttons, key=lambda b: b.rectangle().top)
-    if top.window_text() == "Maximize":
-        ui.click(top)
+    """Make the editor panel fill the work area, proven by where its tabs start; click the panel's button at most twice."""
+    for _ in range(3):
+        if _editor_is_maximized(win):
+            return
+        tabs = _editor_tabs(win)
+        if not tabs:
+            ui.fail("No editor tab found to maximize")
+        row = tabs[0].rectangle().top
+        buttons = [b for b in win.descendants(control_type="Button")
+                   if b.window_text() in ("Maximize", "Restore") and abs(b.rectangle().top - row) < 20 and b.rectangle().width() > 0]
+        if not buttons:
+            ui.fail("Editor maximize button not found")
+        ui.click(max(buttons, key=lambda x: x.rectangle().left))
         time.sleep(1.2)
+    if not _editor_is_maximized(win):
+        ui.fail("The editor panel could not be maximized")
 
 
 def open_debtor_from_list(win, title):
@@ -446,6 +473,19 @@ def save_debtor(win):
 ADDRESS_COLUMNS = ["No.", "First Name", "Name", "Company", "ZIP", "City"]
 
 
+def _focus_dialog(dlg):
+    """A dialog can open INACTIVE (grey title, the main window keeps the focus); typing would then go to the wrong
+    window. Bring it to the front with the Windows call and wait until it really is the foreground window."""
+    import ctypes
+    user32 = ctypes.windll.user32
+    for _ in range(4):
+        if user32.GetForegroundWindow() == dlg.handle:
+            return
+        user32.SetForegroundWindow(dlg.handle)
+        time.sleep(0.4)
+    ui.fail("The dialog could not be brought to the front; refusing to type into another window")
+
+
 def _address_dialog(win):
     return next((d for d in win.descendants(control_type="Window")
                  if "Select the address" in (d.window_text() or "")), None)
@@ -489,9 +529,18 @@ def select_debtor(win, debtor):
     fallback, and pick the single exact match. Returns True if selected, False if the debtor does not
     exist (caller then creates it). Several matches = stop for a human."""
     from . import vision
-    upper, _lower = ui.icons_after_label(win, "Addresses", 2)
-    ui.click(upper)
-    dlg = ui.wait_until(lambda: _address_dialog(win), 8, what="'Select the address' dialog")
+    dlg = None
+    for attempt in range(3):          # the first click can be swallowed (focus still in the date box): click again
+        upper, _lower = ui.icons_after_label(win, "Addresses", 2)
+        ui.click(upper)
+        try:
+            dlg = ui.wait_until(lambda: _address_dialog(win), 7, what="'Select the address' dialog")
+            break
+        except ui.UIError:
+            log.warning("'Select the address' did not open (attempt %d), clicking again", attempt + 1)
+    if dlg is None:
+        ui.fail("The 'Select the address' dialog did not open after three clicks")
+    _focus_dialog(dlg)
 
     def cancel():
         ui.click(ui.find_by_name(dlg, "Cancel", "Button"))
@@ -504,7 +553,7 @@ def select_debtor(win, debtor):
     ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="result list")
     rows = vision.read_table(body.rectangle(), ADDRESS_COLUMNS)
     hits = find_debtor_rows(rows, debtor)
-    log.info("address dialog: %d row(s), %d exact match(es)", len(rows), len(hits))
+    log.info("address dialog: %d row(s), %d exact match(es): %s", len(rows), len(hits), rows)
     if not hits:
         cancel()
         return False
@@ -723,6 +772,7 @@ def select_product(win, sku, expected_net, already=0):
     net_before = ui.money_value(_total_net(win))
     ui.click(ui.icons_after_label(win, "Items", 4)[0])
     dlg = ui.wait_until(lambda: _window_named(win, "Select a product"), 8, what="'Select a product' dialog")
+    _focus_dialog(dlg)
     search = next(e for e in dlg.descendants(control_type="Edit") if e.rectangle().width() == 150)
     search.click_input()
     search.type_keys("".join("{" + c + "}" if c in "+^%~(){}" else c for c in sku), set_foreground=False)
@@ -774,7 +824,27 @@ def _verify_line(win, sku, already):
 # ------------------------------------------------------------ line values (quantity, discount)
 # Findings (E33/E34/D44): typing only works when a REAL mouse click has put the focus into the cell editor (the
 # window-message click does not). After Enter the cell commits and Fakturama recalculates the totals.
-COL_QTY_X, COL_DISCOUNT_X, ROW0_Y, ROW_H = 112, 990, 37, 25     # offsets inside the Items grid window
+ROW0_Y, ROW_H = 37, 25     # first data row and row height inside the Items grid window (rows are equally tall)
+
+
+def _column_center(win, name):
+    """x offset (inside the Items grid) of the centre of column `name`. Column widths change with the window size, so
+    they are measured: an empty grid row shows the vertical grid lines as thin grey pixels; ten columns have eleven lines."""
+    from PIL import ImageGrab
+    rect = _items_grid_rect(win)
+    img = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom)).convert("L")
+    y = ROW0_Y + ROW_H * 6 + 12                               # an empty row (an order has two or three lines)
+    xs = [x for x in range(img.width) if img.getpixel((x, y)) < 225]
+    lines = []
+    for x in xs:
+        if not lines or x - lines[-1] > 3:
+            lines.append(x)
+    lines = [x for x in lines if x < img.width - 8]           # the right-most mark is the grid border
+    names = ITEM_COLUMNS
+    if len(lines) < len(names) + 1:
+        ui.fail(f"Could not measure the Items columns: grid lines found at {lines}")
+    i = names.index(name)
+    return (lines[i] + lines[i + 1]) // 2
 
 
 def _focus_rect():
@@ -783,12 +853,13 @@ def _focus_rect():
     return r.left, r.top, r.right, r.bottom
 
 
-def _edit_cell(win, row, col_x, text):
+def _edit_cell(win, row, column, text):
     """Click one cell with the real mouse, prove the keyboard focus is inside that cell, type and press Enter."""
     from pywinauto.keyboard import send_keys
     grid = _native_items_grid(win)
     rect = _items_grid_rect(win)
     y = ROW0_Y + ROW_H * row
+    col_x = _column_center(win, column)
     grid.click_input(coords=(col_x, y))
     time.sleep(0.7)
     left, top, right, bottom = _focus_rect()
@@ -809,9 +880,9 @@ def _money(text):
 def set_line_values(win, row, quantity, discount_percent):
     """Set quantity and discount of order line `row` (0-based). Each cell is proven to have the focus before
     typing; the caller verifies the Total Net afterwards (verify_order_totals)."""
-    _edit_cell(win, row, COL_QTY_X, str(quantity))
+    _edit_cell(win, row, "Qty.", str(quantity))
     if _money(str(discount_percent)) != 0:
-        _edit_cell(win, row, COL_DISCOUNT_X, str(discount_percent))
+        _edit_cell(win, row, "Discount", str(discount_percent))
 
 
 def verify_order_totals(win, net, vat, gross):
@@ -827,7 +898,7 @@ def verify_order_totals(win, net, vat, gross):
 
 
 # ------------------------------------------------------------ save the Order and prove it
-DOC_COLUMNS = ["", "Document", "Date", "Name", "Cust.Ref.", "State", "Total", "Printed"]
+DOC_COLUMNS = ["Document", "Date", "Name", "Cust.Ref.", "State", "Total", "Printed"]
 
 
 def save_order(win):
@@ -855,15 +926,21 @@ def read_documents(win):
     nav[0].click_input(double=True)
     time.sleep(2.0)
     tab = next(t for t in win.descendants(control_type="TabItem") if t.window_text() == "Documents")
+    maximized_here = False
     if any(t.window_text() == "Fakturama" and t.rectangle().top < 250 for t in win.descendants(control_type="TabItem")):
         tab.click_input(double=True)          # editors are still visible beside the list: maximize the list panel
         time.sleep(1.8)
+        maximized_here = True
     panes = [p for p in win.descendants(control_type="Pane") if p.is_visible() and p.rectangle().width() > 850 and 500 < p.rectangle().height() < 800]
     if not panes:
         ui.fail("The Documents table was not found")
     body = min(panes, key=lambda p: p.rectangle().width() * p.rectangle().height())
     ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="Documents list")
-    return vision.read_table(body.rectangle(), DOC_COLUMNS)
+    rows = vision.read_table(body.rectangle(), DOC_COLUMNS)
+    if maximized_here:                       # give the editors their place back
+        next(t for t in win.descendants(control_type="TabItem") if t.window_text() == "Documents").click_input(double=True)
+        time.sleep(1.5)
+    return rows
 
 
 def verify_saved_order(win, order, number):

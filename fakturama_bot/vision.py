@@ -23,6 +23,8 @@ def read_table(rect, columns, timeout=90):
     buf = io.BytesIO()
     shot.save(buf, format="PNG")
     prompt = (f"This image is a table whose columns, left to right, are: {', '.join(columns)}. "
+              "The table can have an extra narrow first column without a header (a row number or an icon): ignore it, "
+              "start with the first named column. "
               "Return every DATA row (not the header) as a list of cell texts in column order. "
               "Copy the text exactly as shown; use an empty string for an empty cell; "
               "a text ending in '...' is cut off by the column width, keep the dots. "
