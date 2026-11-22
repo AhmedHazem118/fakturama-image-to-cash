@@ -32,6 +32,17 @@ Step numbers refer to the task document.
 | One-command runner and run report | **Not started** (each step has its own script in `tools/`) |
 | Annotated screenshots or a short recording | **Not included yet** |
 
+## Screenshots (annotated, cropped to the Fakturama window)
+
+These show the master data the bot created from the example order image (Northstar Office GmbH, CHR-ERG-01, MAT-DESK-02). They do not show a saved Order, because saving the Order is not built yet (see Status).
+
+![Debtor](docs/annotated/10_debtor_saved.png)
+![Product MAT-DESK-02](docs/annotated/12_product_mat.png)
+![Products list](docs/annotated/14_Products_list.png)
+![Payment methods](docs/annotated/16_terms_of_payment_list.png)
+
+More: `docs/annotated/` (debtor list, VAT list, product CHR-ERG-01). Originals without annotations: `docs/screenshots/`. The e-mail address of the debtor did not persist in Fakturama for this two-address debtor; it is treated as a warning, not as a verified field.
+
 ## Requirements
 
 - Windows 10 or 11, a screen of 1920 x 1080 (positions inside tables are derived from measured control sizes at this layout).
