@@ -27,7 +27,7 @@ Step numbers refer to the task document.
 | Step | Status |
 |---|---|
 | 1.1, 1.2 Read the order image into JSON (Gemini vision, fixed schema, model fallback) | Done: matches the answer key for the task's example image |
-| Validate (line totals, sums, VAT, dates, payment rules), 15 unit tests | Done |
+| Validate (line totals, sums, VAT, dates, payment rules), 19 unit tests | Done |
 | 1.3 to 1.8 Open a New Order, Date, Cust.Ref., price mode Net, VAT mode | Done, read back on screen |
 | 2.1 to 2.4 Select the Debtor from the Order (reads the dialog table, exact match, native row selection) | Done: the Invoice address box is verified; the Delivery address is not compared in the Order |
 | 2.5 to 2.7, 2.9, 2.11 Create the Debtor (company, contact, billing address, alias, Net) | Done, record reopened and every field compared |
@@ -52,23 +52,27 @@ Step numbers refer to the task document.
 - Windows 10 or 11 and a 1920 x 1080 screen. Some positions inside the Items grid are measured at run time, but its row height is a fixed 25 px, and one setup helper (`tools/switch_workspace.py`) presses two dialog buttons at fixed screen positions.
 - Fakturama 2.2.1 with the **English** user interface, open, main window not minimized, using a **new, empty data folder** (File > Select Workspace). Other programs may be open, the runner brings Fakturama back to the front, but do not use the computer during a run.
 - Python 3.12.
-- A Gemini API key (free tier works; it can answer 429 rate-limit errors, the runner waits and retries). Use synthetic data only: free-tier inputs may be used by the provider.
+- uv (or pip), and a Gemini API key (free tier works; it can answer 429 rate-limit errors, the runner waits and retries). Use synthetic data only: free-tier inputs may be used by the provider.
 
 ## Setup
 
+The dependencies are pinned in `pyproject.toml` and `uv.lock` ([uv](https://docs.astral.sh/uv/)):
+
 ```powershell
-pip install -r requirements.txt
-[Environment]::SetEnvironmentVariable("GEMINI_API_KEY", "<your key>", "User")   # then restart the terminal
+uv sync                         # creates .venv with the locked dependencies
+copy .env.example .env          # then put your Gemini key after GEMINI_API_KEY= in .env
 ```
 
-Optional: `GEMINI_MODEL` puts your own model first. If the preferred model is overloaded, retired or stalls, the extractor tries the next one in `DEFAULT_MODELS` (`gemini-3.8-flash`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`) and logs which one answered.
+The key is read from the `.env` file in the project folder, or from an environment variable called `GEMINI_API_KEY` (a variable that is already set wins over the file). `.env` is ignored by git. Without uv: `pip install pywinauto==0.6.9 "pillow>=10"`.
+
+Optional: `GEMINI_MODEL` (in `.env` or the environment) puts your own model first. If the preferred model is overloaded, retired or stalls, the extractor tries the next one in `DEFAULT_MODELS` (`gemini-3.8-flash`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`) and logs which one answered.
 
 ## Run
 
 From the project folder, with Fakturama open on an empty data folder:
 
 ```powershell
-python -m fakturama_bot.run samples/task_example_order.png --shots docs/run_shots
+uv run python -m fakturama_bot.run samples/task_example_order.png --shots docs/run_shots
 ```
 
 It prints one line per stage (`ok`, `created`, `reused`, `STOP`), writes `run_output/run_report.json`, and stops with a screenshot at the first thing that does not match. `--json samples/task_example_order.expected.json` skips the AI reading and uses the answer key. A full run took about ten minutes, mostly waiting for the vision model.
@@ -76,9 +80,9 @@ It prints one line per stage (`ok`, `created`, `reused`, `STOP`), writes `run_ou
 Other commands:
 
 ```powershell
-python -m unittest discover -s tests -t . -v                  # validator tests, no Fakturama and no key needed
-python -m tools.try_extract samples/task_example_order.png    # reads the example image with Gemini and compares it to the answer key
-python -m tools.switch_workspace D:\FaktumaData_new           # points Fakturama to a new empty data folder (restarts it)
+uv run python -m unittest discover -s tests -t . -v           # validator and .env tests, no Fakturama and no key needed
+uv run python -m tools.try_extract samples/task_example_order.png # reads the example image with Gemini and compares it to the answer key
+uv run python -m tools.switch_workspace D:\FaktumaData_new   # points Fakturama to a new empty data folder (restarts it)
 ```
 
 The other scripts in `tools/` are the step-by-step scripts used during development (`try_*`); `tools/probes/` holds the look-only experiments. Their docstrings say what state they expect.
@@ -136,6 +140,7 @@ In priority order, about an hour each:
 
 ```
 fakturama_bot/   extract.py, validate.py, ui.py, vision.py, flow.py, run.py
+pyproject.toml, uv.lock, .env.example   dependencies (pinned) and the key template
 tests/           unit tests for the validator and the task example
 samples/         the task's example order image and its answer key
 tools/           try_* scripts (one stage each, for debugging), helpers (switch_workspace, annotate_run_shots, inspect_ui)

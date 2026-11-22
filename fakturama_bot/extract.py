@@ -1,7 +1,7 @@
 """Extractor: order image -> structured dict, using a vision LLM (Gemini).
 
 The model is only asked to READ. Checking the numbers is validate.py's job.
-The API key comes from the GEMINI_API_KEY environment variable (never from code).
+The API key comes from the GEMINI_API_KEY environment variable or from a .env file (never from code).
 """
 import base64
 import json
@@ -14,6 +14,31 @@ import urllib.request
 import logging
 
 log = logging.getLogger("fakturama_bot")
+
+
+def _load_dotenv(path=None):
+    """Put the KEY=VALUE lines of a .env file (project folder, then current folder) into the environment.
+    A variable that is already set wins, empty values and comments are ignored, no extra dependency.
+    Runs before MODELS is built, so GEMINI_MODEL can be set there too."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for candidate in ([path] if path else [os.path.join(here, ".env"), os.path.join(os.getcwd(), ".env")]):
+        try:
+            with open(candidate, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip().removeprefix("export ").strip()
+            value = value.strip().strip('"').strip("'")
+            if key and value and key not in os.environ:
+                os.environ[key] = value
+
+
+_load_dotenv()
 
 # Preferred model first (reproducible results), then fallbacks that are tried when the preferred one is
 # overloaded (HTTP 503/429), retired (404) or stalls (timeout). GEMINI_MODEL puts your own choice first.
@@ -71,7 +96,7 @@ def ask_gemini(image_bytes, mime, prompt, schema, retries=1, timeout=45):
     (404) or stalled (timeout) model is skipped, and the model that answered is logged. `timeout` is per attempt."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        raise ExtractionError("GEMINI_API_KEY is not set. See the README, section Setup.")
+        raise ExtractionError("GEMINI_API_KEY is not set. See the README, section Setup (an environment variable or a .env file).")
 
     data = base64.b64encode(image_bytes).decode()
     body = json.dumps({

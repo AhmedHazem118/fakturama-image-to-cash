@@ -1,0 +1,13 @@
+[project]
+name = "fakturama-order-automation"
+version = "0.1.0"
+description = "Reads an order image with a vision model and drives Fakturama through UI Automation to a saved Order and a paid Invoice."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pywinauto==0.6.9",
+    "pillow>=10",
+]
+
+[tool.uv]
+package = false
