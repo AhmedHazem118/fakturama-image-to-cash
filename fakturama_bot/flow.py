@@ -855,8 +855,8 @@ def read_documents(win):
     nav[0].click_input(double=True)
     time.sleep(2.0)
     tab = next(t for t in win.descendants(control_type="TabItem") if t.window_text() == "Documents")
-    if not any(p.rectangle().width() > 850 and p.rectangle().height() > 500 for p in win.descendants(control_type="Pane") if p.is_visible()):
-        tab.click_input(double=True)          # maximize the list panel
+    if any(t.window_text() == "Fakturama" and t.rectangle().top < 250 for t in win.descendants(control_type="TabItem")):
+        tab.click_input(double=True)          # editors are still visible beside the list: maximize the list panel
         time.sleep(1.8)
     panes = [p for p in win.descendants(control_type="Pane") if p.is_visible() and p.rectangle().width() > 850 and 500 < p.rectangle().height() < 800]
     if not panes:
@@ -891,3 +891,98 @@ def verify_saved_order(win, order, number):
     if errors:
         ui.fail("Saved order does not match: " + "; ".join(errors))
     return rows[0]
+
+
+# ------------------------------------------------------------ the linked Invoice
+def _tab_titles(win):
+    return [t.window_text() for t in win.descendants(control_type="TabItem") if t.rectangle().top < 250]
+
+
+def open_followup_invoice(win, order_number):
+    """From the saved order's own tab press 'Invoice' under 'Create a follow-up document'; wait for '*New Invoice'."""
+    if "*New Invoice" in _tab_titles(win):
+        log.info("an invoice editor is already open: resuming with it")
+    else:
+        ui.find_by_name(win, order_number, "TabItem").click_input()
+        time.sleep(1.0)
+        btns = [b for b in win.descendants(control_type="Button") if b.window_text() == "Invoice" and b.rectangle().top > 250 and b.is_enabled()]
+        if len(btns) != 1:
+            ui.fail(f"Expected one follow-up 'Invoice' button, found {len(btns)}")
+        btns[0].click_input()
+        ui.wait_until(lambda: "*New Invoice" in _tab_titles(win), 15, what="the New Invoice editor")
+    ui.find_by_name(win, "*New Invoice", "TabItem").click_input()
+    time.sleep(1.0)
+    ensure_editor_maximized(win)
+
+
+def complete_invoice(win, order):
+    """Check what Fakturama copied from the order, set the payment (method, paid, date, value) and verify each field."""
+    t = order["totals"]
+    ref = ui.read_value(ui.find_by_name(win, "Cust.Ref.", "Edit"))
+    if ref != order["external_reference"]:
+        ui.fail(f"Invoice reference {ref!r} != {order['external_reference']!r}")
+    address = ui.read_value(ui.edits_after_label(win, "Addresses", 1)[0])
+    if order["debtor"]["company"] not in address:
+        ui.fail(f"Invoice address box does not show the debtor: {address!r}")
+    verify_order_totals(win, t["net"], t["vat"], t["gross"])          # lines, discount and totals were copied correctly
+    paid = ui.find_by_name(win, "paid", "CheckBox")
+    if not paid.get_toggle_state():
+        paid.click_input()
+        ui.wait_until(lambda: paid.get_toggle_state() == 1, 4, 0.2, what="'paid' to be ticked")
+    pr = paid.rectangle()
+    row = [c for c in win.descendants() if c.is_visible() and abs(c.rectangle().top - pr.top) < 40 and c.rectangle().left > pr.right]
+    combo = next(c for c in row if c.element_info.control_type == "ComboBox")
+    method = combo.selected_text().strip()
+    want = order["payment"]["method"]
+    if not want.startswith(method) and method != want:
+        ui.fail(f"Payment method on the invoice is {method!r}, expected {want!r}")
+    date_edit = next(c for c in row if c.element_info.control_type == "Edit" and c.window_text() == "" and c.rectangle().left > combo.rectangle().right)
+    set_date(date_edit, order["payment"]["payment_date"])
+    value = _money(ui.read_value(ui.find_by_name(win, "Value", "Edit")))
+    if abs(value - _money(str(t["gross"]))) > _money("0.02"):
+        ui.fail(f"Paid value {value} != invoice total {t['gross']}")
+    log.info("invoice payment set: paid, %s, %s, %s", method, fakturama_date(order["payment"]["payment_date"]), value)
+
+
+def save_invoice(win):
+    ui.find_by_name(win, "*New Invoice", "TabItem").click_input()
+    time.sleep(0.8)
+    _save_current(win, "*New Invoice")
+
+    def saved():
+        titles = _tab_titles(win)
+        return next((x for x in titles if x.startswith("INV")), None) if "*New Invoice" not in titles else None
+    number = ui.wait_until(saved, 15, what="the invoice tab to show its number")
+    log.info("invoice saved as %s", number)
+    return number
+
+
+def verify_documents(win, order, order_number, invoice_number=None):
+    """Data > Documents must show exactly the saved order (state 'open') and, when given, the linked invoice
+    (state 'paid', dated with the payment date's own entry), both with the gross total from the image."""
+    rows = {r["Document"].strip(): r for r in read_documents(win)}
+    want_rows = {order_number: ("open", order["order_date"])}
+    if invoice_number:
+        want_rows[invoice_number] = ("paid", None)
+    errors = []
+    if set(rows) != set(want_rows):
+        errors.append(f"documents listed {sorted(rows)}, expected {sorted(want_rows)}")
+    ref = order["external_reference"]
+    for number, (state, iso_date) in want_rows.items():
+        r = rows.get(number)
+        if r is None:
+            continue
+        if r["State"].strip().lower() != state:
+            errors.append(f"{number}: state {r['State']!r} != {state!r}")
+        if abs(_money(r["Total"]) - _money(str(order["totals"]["gross"]))) > _money("0.02"):
+            errors.append(f"{number}: total {r['Total']!r} != {order['totals']['gross']}")
+        shown = r["Cust.Ref."].strip().rstrip(".")
+        if len(shown) < 6 or not ref.startswith(shown):
+            errors.append(f"{number}: reference {r['Cust.Ref.']!r} does not match {ref!r}")
+        if not (r["Name"].strip().rstrip(".").startswith(order["debtor"]["company"][:10])):
+            errors.append(f"{number}: name {r['Name']!r}")
+        if iso_date and r["Date"].strip() != fakturama_date(iso_date):
+            errors.append(f"{number}: date {r['Date']!r} != {fakturama_date(iso_date)!r}")
+    if errors:
+        ui.fail("Documents list does not match: " + "; ".join(errors))
+    return rows
