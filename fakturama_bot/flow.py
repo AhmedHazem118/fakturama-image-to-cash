@@ -219,11 +219,15 @@ def _role_boxes(win):
 
 def _open_role_popup(win, editor):
     """The small '>' button beside 'address type' opens a popup with two checkboxes (probe: D42)."""
-    edit = ui.edits_after_label(editor, "address type", 1)[0]
-    er = edit.rectangle()
-    btn = next((b for b in editor.descendants(control_type="Button")
-                if (b.window_text() or "") == "" and abs(b.rectangle().top - er.top) < 6 and b.rectangle().left >= er.right - 6), None)
-    if btn is None:
+    def find_button():
+        edit = ui.edits_after_label(editor, "address type", 1)[0]
+        er = edit.rectangle()
+        return next((b for b in editor.descendants(control_type="Button")
+                     if (b.window_text() or "") == "" and abs(b.rectangle().top - er.top) < 6 and b.rectangle().left >= er.right - 6), None)
+    # the form re-lays itself out after the last field was typed: wait for the button instead of looking once
+    try:
+        btn = ui.wait_until(find_button, 8, 0.4, what="the button beside 'address type'")
+    except ui.UIError:
         ui.fail("The button beside 'address type' was not found (is the address row visible?)")
     ui.click(btn)
     return ui.wait_until(lambda: _role_boxes(win) or None, 5, what="address role popup")
@@ -841,9 +845,9 @@ def _column_center(win, name):
             lines.append(x)
     lines = [x for x in lines if x < img.width - 8]           # the right-most mark is the grid border
     names = ITEM_COLUMNS
-    if len(lines) < len(names) + 1:
-        ui.fail(f"Could not measure the Items columns: grid lines found at {lines}")
     i = names.index(name)
+    if len(lines) < i + 2:           # the last columns can be cut off by the window width; only this column's two lines are needed
+        ui.fail(f"Could not measure column {name!r}: grid lines found at {lines}")
     return (lines[i] + lines[i + 1]) // 2
 
 
@@ -898,6 +902,14 @@ def verify_order_totals(win, net, vat, gross):
 
 
 # ------------------------------------------------------------ save the Order and prove it
+SHOT_HOOK = None          # set by the runner: called with a short name when a screen worth a screenshot is showing
+
+
+def _shot(name):
+    if SHOT_HOOK:
+        SHOT_HOOK(name)
+
+
 DOC_COLUMNS = ["Document", "Date", "Name", "Cust.Ref.", "State", "Total", "Printed"]
 
 
@@ -905,12 +917,20 @@ def save_order(win):
     """Save the open order once with the toolbar. Proof of the save: the tab '*New Order' becomes the order number.
     Returns the order number (for example PO000001)."""
     activate_order_tab(win)
-    _save_current(win, "*New Order")
 
     def saved():
         titles = [t.window_text() for t in win.descendants(control_type="TabItem") if t.rectangle().top < 250]
         return next((t for t in titles if t.startswith("PO") or t.startswith("OR")), None) if "*New Order" not in titles else None
-    number = ui.wait_until(saved, 15, what="the order tab to lose its '*' and show the order number")
+    number = None
+    for attempt in range(3):          # the first press of Save is sometimes swallowed (focus was in a text box): press again
+        _save_current(win, "*New Order")
+        try:
+            number = ui.wait_until(saved, 8, what="the order tab to lose its '*' and show the order number")
+            break
+        except ui.UIError:
+            log.warning("order not saved after press %d of Save, trying again", attempt + 1)
+    if number is None:
+        ui.fail("The order was not saved after three presses of Save")
     log.info("order saved as %s", number)
     return number
 
@@ -937,6 +957,7 @@ def read_documents(win):
     body = min(panes, key=lambda p: p.rectangle().width() * p.rectangle().height())
     ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="Documents list")
     rows = vision.read_table(body.rectangle(), DOC_COLUMNS)
+    _shot("documents")
     if maximized_here:                       # give the editors their place back
         next(t for t in win.descendants(control_type="TabItem") if t.window_text() == "Documents").click_input(double=True)
         time.sleep(1.5)
@@ -1019,17 +1040,25 @@ def complete_invoice(win, order):
     if abs(value - _money(str(t["gross"]))) > _money("0.02"):
         ui.fail(f"Paid value {value} != invoice total {t['gross']}")
     log.info("invoice payment set: paid, %s, %s, %s", method, fakturama_date(order["payment"]["payment_date"]), value)
+    _shot("invoice_paid")
 
 
 def save_invoice(win):
-    ui.find_by_name(win, "*New Invoice", "TabItem").click_input()
-    time.sleep(0.8)
-    _save_current(win, "*New Invoice")
-
     def saved():
         titles = _tab_titles(win)
         return next((x for x in titles if x.startswith("INV")), None) if "*New Invoice" not in titles else None
-    number = ui.wait_until(saved, 15, what="the invoice tab to show its number")
+    number = None
+    for attempt in range(3):
+        ui.find_by_name(win, "*New Invoice", "TabItem").click_input()
+        time.sleep(0.8)
+        _save_current(win, "*New Invoice")
+        try:
+            number = ui.wait_until(saved, 8, what="the invoice tab to show its number")
+            break
+        except ui.UIError:
+            log.warning("invoice not saved after press %d of Save, trying again", attempt + 1)
+    if number is None:
+        ui.fail("The invoice was not saved after three presses of Save")
     log.info("invoice saved as %s", number)
     return number
 

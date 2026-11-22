@@ -86,6 +86,20 @@ def _keep_fakturama_in_front(stop):
         stop.wait(0.4)
 
 
+def _make_shooter(folder):
+    """Screenshot of the Fakturama window only (never the whole screen), numbered in the order taken."""
+    from PIL import ImageGrab
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    counter = [0]
+
+    def shoot(name):
+        time.sleep(0.6)
+        r = ui.main_window().rectangle()
+        counter[0] += 1
+        ImageGrab.grab(bbox=(r.left + 9, r.top, r.right - 9, r.bottom - 8)).save(Path(folder) / f"{counter[0]:02d}_{name}.png")
+    return shoot
+
+
 def _create_debtor(win, debtor, payment):
     editor = flow.open_new_debtor(win)
     flow.ensure_editor_maximized(win)
@@ -138,6 +152,7 @@ def run(order, report):
         report.add("Debtor", "selected")
 
     flow.activate_order_tab(win)
+    flow._shot("order_header_and_debtor")
     added = {}
     for item in order["items"]:
         sku = item["sku"]
@@ -156,6 +171,7 @@ def run(order, report):
         flow.set_line_values(win, row, item["quantity"], item["discount_percent"])
     t = order["totals"]
     got = flow.verify_order_totals(win, t["net"], t["vat"], t["gross"])
+    flow._shot("order_lines_and_totals")
     report.add("Quantities, discounts and totals", "ok", f"net {got['net']}, VAT {got['vat']}, gross {got['gross']}")
 
     order_no = flow.save_order(win)
@@ -174,9 +190,12 @@ def main(argv=None):
     ap.add_argument("image", nargs="?", help="order image (PNG/JPG)")
     ap.add_argument("--json", help="use this already-extracted order JSON instead of reading an image")
     ap.add_argument("--report", default="run_output/run_report.json")
+    ap.add_argument("--shots", help="folder for cropped screenshots (the Fakturama window only) taken at the key moments")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     report = Report()
+    if args.shots:
+        flow.SHOT_HOOK = _make_shooter(args.shots)
     try:
         if args.json:
             raw = json.loads(Path(args.json).read_text(encoding="utf-8"))
