@@ -79,7 +79,7 @@ python -m tools.try_extract samples/task_example_order.png    # reads the exampl
 python tools/switch_workspace.py D:\FaktumaData_new           # points Fakturama to a new empty data folder (restarts it)
 ```
 
-The other scripts in `tools/` are the probes (look only) and the step-by-step scripts used during development; their docstrings say what state they expect.
+The other scripts in `tools/` are the step-by-step scripts used during development (`try_*`); `tools/probes/` holds the look-only experiments. Their docstrings say what state they expect.
 
 `samples/task_example_order.png` is the example order image from the task (synthetic data); `samples/task_example_order.expected.json` is its answer key.
 
@@ -136,6 +136,7 @@ Findings that shaped the code:
 fakturama_bot/   extract.py, validate.py, ui.py, vision.py, flow.py, run.py
 tests/           unit tests for the validator and the task example
 samples/         the task's example order image and its answer key
-tools/           probe scripts (look only), try scripts (one step each), screenshot and annotation helpers
+tools/           try_* scripts (one stage each, for debugging), helpers (switch_workspace, annotate_run_shots, inspect_ui)
+tools/probes/    look-only experiments and raw UIA dumps used to learn how Fakturama behaves (run from the project root with PYTHONPATH=.)
 docs/            Part 1 design document, annotated screenshots (docs/annotated)
 ```
