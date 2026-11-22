@@ -1,4 +1,4 @@
-"""Switch Fakturama to a new EMPTY data folder (File > Select Workspace). Fakturama restarts. Used before a clean demo run.
+r"""Switch Fakturama to a new EMPTY data folder (File > Select Workspace). Fakturama restarts. Used before a clean demo run.
 The folder dialog is not exposed as a normal window, so after opening it the path is typed (the dialog has the focus) and
 the two buttons are pressed at the positions seen on the 1920x1080 screen of this PC - a documented exception to the
 no-coordinates rule, used only for this one setup step, never during the order flow.
