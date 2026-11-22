@@ -88,7 +88,7 @@ Findings that shaped the code:
 
 ## Limitations and skipped items
 
-- Not built: address roles and the delivery address, the payment-code mapping, quantity and discount per line, the loop over items, saving the Order, the linked Invoice and the payment status (see Status).
+- Not built: quantity and discount per line (editing a cell of the Items grid did not commit reliably, so it is not claimed), the loop over items, saving the Order, the linked Invoice and the payment status (see Status).
 - Not fully idempotent: products are created without first checking whether they exist, and an existing VAT entry or payment method is reused by name only (its value, code or settings are not compared). Use a new, empty data folder.
 - The extractor is tested on the task's example image only. Other layouts, photos, rotated or multi-page images, other languages and number formats are untested.
 - English user interface and one screen layout assumed.
