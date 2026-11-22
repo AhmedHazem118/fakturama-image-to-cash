@@ -21,6 +21,7 @@ DEFAULT_MODELS = ["gemini-3.8-flash", "gemini-3-flash-preview", "gemini-3.1-flas
 MODELS = ([os.environ["GEMINI_MODEL"]] if os.environ.get("GEMINI_MODEL") else []) + [
     m for m in DEFAULT_MODELS if m != os.environ.get("GEMINI_MODEL")]
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+_LAST_GOOD = [None]   # the model that answered last (remembered for the rest of the run)
 
 S = {"type": "STRING", "nullable": True}
 N = {"type": "NUMBER", "nullable": True}
@@ -78,7 +79,10 @@ def ask_gemini(image_bytes, mime, prompt, schema, retries=1, timeout=45):
         "generationConfig": {"temperature": 0, "responseMimeType": "application/json", "responseSchema": schema},
     }).encode()
     failures = []
-    for model in MODELS:
+    # Try first the model that answered last time (an overloaded preferred model would otherwise cost its full
+    # timeout on every call), then the rest of the list in order.
+    order = ([_LAST_GOOD[0]] if _LAST_GOOD[0] in MODELS else []) + [m for m in MODELS if m != _LAST_GOOD[0]]
+    for model in order:
         req = urllib.request.Request(
             BASE_URL.format(model=model), data=body,
             # key goes in a header, not the URL, so it never ends up in logs
@@ -90,6 +94,7 @@ def ask_gemini(image_bytes, mime, prompt, schema, retries=1, timeout=45):
                 text = payload["candidates"][0]["content"]["parts"][0]["text"]
                 result = json.loads(text)
                 log.info("Gemini model used: %s", model)
+                _LAST_GOOD[0] = model
                 return result
             except urllib.error.HTTPError as e:
                 detail = e.read()[:120]

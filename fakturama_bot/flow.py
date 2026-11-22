@@ -12,8 +12,21 @@ log = logging.getLogger("fakturama_bot")
 
 
 def _editor_count(win):
-    return sum(1 for d in win.descendants()
-               if d.element_info.control_type == "Edit" and d.window_text() == "Cust.Ref.")
+    """How many unsaved order editors are open. Counted by TAB TITLE, not by a field inside the editor: the fields
+    of an editor are invisible whenever another tab is active (a second order was once opened by mistake, E32)."""
+    return sum(1 for t in win.descendants(control_type="TabItem")
+               if t.window_text().lstrip("*") == "New Order" and t.rectangle().top < 250)
+
+
+def activate_order_tab(win):
+    """Bring the open (unsaved) order editor to the front and make sure the editor panel is maximized."""
+    tabs = [t for t in win.descendants(control_type="TabItem")
+            if t.window_text().lstrip("*") == "New Order" and t.rectangle().top < 250]
+    if len(tabs) != 1:
+        ui.fail(f"Expected exactly one open order editor, found {len(tabs)}")
+    tabs[0].click_input()
+    time.sleep(0.8)
+    ensure_editor_maximized(win)
 
 
 def open_new_order(win):
@@ -486,7 +499,7 @@ def select_debtor(win, debtor):
     search = next(e for e in dlg.descendants(control_type="Edit") if e.rectangle().width() == 150)
     ui.set_text(search, debtor["company"])
     body = next(p for p in dlg.descendants(control_type="Pane")
-                if p.rectangle().width() == 774 and p.rectangle().height() > 300)
+                if p.rectangle().width() == 774 and 380 < p.rectangle().height() < 420)
     # The list loads/filters asynchronously: wait until the table's pixels stop changing.
     ui.wait_stable(lambda: vision.region_signature(body.rectangle()), 6, 0.5, what="result list")
     rows = vision.read_table(body.rectangle(), ADDRESS_COLUMNS)
@@ -570,12 +583,29 @@ def _fill_product_editor(win, item, vat_description):
     log.info("Product created: %s (gross %s, %s)", item["sku"], gross, vat_description)
 
 
-def create_product(win, item, vat_description):
+def _open_new_product(win):
+    """Open an empty 'New product' editor. Primary route: the toolbar button 'Create a new product'. The menu
+    New > New product failed once with 'command.new.product failed' (E31), so it is only the fallback."""
     from pywinauto.keyboard import send_keys
     send_keys("{ESC}")
-    ui.click(ui.find_by_name(win, "New", "MenuItem"))
-    ui.click(ui.find_by_name(win, "New product", "MenuItem"))
-    ui.wait_until(win.child_window(title="New product", control_type="Pane").exists, 10, what="New product editor")
+    for attempt in ("toolbar", "menu"):
+        try:
+            if attempt == "toolbar":
+                ui.click(ui.find_by_name(win, "Create a new product", "Button", timeout=4))
+            else:
+                ui.click(ui.find_by_name(win, "New", "MenuItem"))
+                ui.click(ui.find_by_name(win, "New product", "MenuItem"))
+            ui.wait_until(lambda: any(p.window_text() == "New product" for p in win.descendants(control_type="Pane")),
+                          8, what="New product editor")
+            return
+        except ui.UIError as exc:
+            log.warning("opening a new product via the %s failed: %s", attempt, exc)
+            send_keys("{ESC}")
+    ui.fail("Could not open a New product editor by the toolbar or the menu")
+
+
+def create_product(win, item, vat_description):
+    _open_new_product(win)
     _fill_product_editor(win, item, vat_description)
 
 
@@ -594,10 +624,7 @@ def existing_vat_names(win):
     (the form is closed again without saving). Name-based only: the percentage of an existing entry is
     NOT compared here (see D32)."""
     from pywinauto.keyboard import send_keys
-    send_keys("{ESC}")
-    ui.click(ui.find_by_name(win, "New", "MenuItem"))
-    ui.click(ui.find_by_name(win, "New product", "MenuItem"))
-    ui.wait_until(win.child_window(title="New product", control_type="Pane").exists, 10, what="New product editor")
+    _open_new_product(win)
     editor = win.child_window(title="New product", control_type="Pane").wrapper_object()
     names = _dropdown_items(ui.find_by_name(editor, "VAT", "ComboBox"))
     close_tab(win, "New product")
