@@ -10,7 +10,7 @@ got = extract_order(image)
 print(json.dumps(got, indent=2))
 
 try:
-    expected = json.load(open("samples/order_sample.expected.json", encoding="utf-8"))
+    expected = json.load(open(image.rsplit(".", 1)[0] + ".expected.json", encoding="utf-8"))
 except FileNotFoundError:
     sys.exit()
 

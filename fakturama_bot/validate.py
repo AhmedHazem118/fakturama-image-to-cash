@@ -90,7 +90,7 @@ def fakturama_date(iso):
 # ------------------------------------------------------------------ main check
 def validate(raw):
     errors = []
-    order = {k: raw.get(k) for k in ("order_date", "external_reference")}
+    order = {k: raw.get(k) for k in ("order_date", "external_reference", "customer_id", "currency")}
     order["debtor"] = {k: (v.strip() if isinstance(v, str) else v) for k, v in (raw.get("debtor") or {}).items()}
     pay = dict(raw.get("payment") or {})
 
@@ -155,7 +155,7 @@ def validate(raw):
             errors.append(f"{label}: line total {total} != qty x net x (1-discount) = {expected}")
         net_sum += total
         vat_sum += total * vat / 100
-        items.append({"sku": sku, "description": it["description"].strip(), "quantity": qty,
+        items.append({"sku": sku, "description": it["description"].strip(), "unit": it.get("unit"), "quantity": qty,
                       "unit_net": net, "vat_percent": vat, "discount_percent": disc, "line_total": total})
     order["items"] = [i for i in items if i]
 
