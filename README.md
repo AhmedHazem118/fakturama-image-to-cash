@@ -1,4 +1,4 @@
-# Fakturama Image-to-Cash Automation
+# Fakturama Order Automation
 
 A Python robot that reads an order image with a vision model, validates it, and drives the Fakturama desktop application through Microsoft UI Automation (UIA) from the image to a saved Order and a linked, paid Invoice, checking every step on screen.
 
