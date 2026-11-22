@@ -16,7 +16,7 @@ Taken by the runner itself during the clean end-to-end run (`--shots`), then ann
 ![Paid Invoice](docs/annotated/run_04_invoice_paid.png)
 ![Both documents](docs/annotated/run_05_documents.png)
 
-Earlier screenshots of the master data (debtor, products, payment methods) are in `docs/annotated/` (files `10_` to `16_`). There is no screen recording: the screenshots above are the evidence. The red "-10.00 %" in the Discount column is how Fakturama displays a 10 % discount that was typed as `10`; the line price and the totals confirm it is applied as a discount.
+There is no screen recording: the screenshots above are the evidence. The red "-10.00 %" in the Discount column is how Fakturama displays a 10 % discount that was typed as `10`; the line price and the totals confirm it is applied as a discount.
 
 ## Status
 
@@ -137,5 +137,5 @@ fakturama_bot/   extract.py, validate.py, ui.py, vision.py, flow.py, run.py
 tests/           unit tests for the validator and the task example
 samples/         the task's example order image and its answer key
 tools/           probe scripts (look only), try scripts (one step each), screenshot and annotation helpers
-docs/            Part 1 design document, annotated screenshots
+docs/            Part 1 design document, annotated screenshots (docs/annotated)
 ```
